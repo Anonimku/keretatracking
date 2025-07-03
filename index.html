@@ -1,65 +1,86 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Contoh Sidebar Menu</title>
+  <meta charset="UTF-8" />
+  <title>Peta Kereta Jalan</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
   <style>
-    * {
+    html, body, #map {
+      height: 100%;
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
-      font-family: 'Arial', sans-serif;
-    }
-    body {
-      display: flex;
-      min-height: 100vh;
-      background-color: #f4f4f4;
-    }
-    .sidebar {
-      width: 220px;
-      background-color: #2c3e50;
-      color: white;
-      padding: 20px;
-    }
-    .sidebar h2 {
-      margin-bottom: 30px;
-      font-size: 22px;
-      text-align: center;
-    }
-    .sidebar a {
-      display: block;
-      padding: 12px;
-      margin-bottom: 10px;
-      color: white;
-      text-decoration: none;
-      border-radius: 4px;
-      transition: background 0.3s;
-    }
-    .sidebar a:hover {
-      background-color: #34495e;
-    }
-    .content {
-      flex: 1;
-      padding: 20px;
-    }
-    .content h1 {
-      font-size: 24px;
-      margin-bottom: 20px;
     }
   </style>
 </head>
 <body>
-  <div class="sidebar">
-    <h2>Menu</h2>
-    <a href="#dashboard">Dashboard</a>
-    <a href="#profil">Profil</a>
-    <a href="#pengaturan">Pengaturan</a>
-    <a href="#keluar">Keluar</a>
-  </div>
-  <div class="content">
-    <h1>Selamat Datang di Dashboard</h1>
-    <p>Ini adalah konten utama dari halaman. Klik menu di sebelah kiri untuk berpindah bagian.</p>
-  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([-6.9, 107.6], 9); // posisi awal peta
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Ikon kereta
+    const trainIcon = L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/73/73065.png",
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+
+    let trackCoords = [];
+
+    // Ambil data GeoJSON lokal dari GitHub Pages
+    fetch("data.geojson")
+      .then(res => res.json())
+      .then(data => {
+        L.geoJSON(data, {
+          style: feature => {
+            if (feature.geometry.type === "LineString") {
+              return { color: "blue", weight: 2 };
+            }
+          },
+          pointToLayer: (feature, latlng) => {
+            if (feature.properties.tags?.railway === "station") {
+              const name = feature.properties.tags.name || "Stasiun";
+              return L.marker(latlng).bindPopup(`<b>${name}</b>`);
+            }
+          },
+          onEachFeature: (feature) => {
+            if (feature.geometry.type === "LineString" && trackCoords.length === 0) {
+              // Simpan hanya 1 jalur untuk simulasi
+              trackCoords = feature.geometry.coordinates.map(c => [c[1], c[0]]);
+            }
+          }
+        }).addTo(map);
+
+        // Jalankan animasi kereta setelah jalur tersedia
+        setTimeout(() => {
+          if (trackCoords.length > 1) {
+            const train = L.marker(trackCoords[0], { icon: trainIcon }).addTo(map);
+            let i = 0;
+            function moveTrain() {
+              train.setLatLng(trackCoords[i]);
+              i++;
+              if (i < trackCoords.length) {
+                setTimeout(moveTrain, 150); // atur kecepatan
+              } else {
+                i = 0;
+                setTimeout(moveTrain, 1000); // ulang dari awal
+              }
+            }
+            moveTrain();
+          }
+        }, 1000);
+      });
+  </script>
 </body>
 </html>
+
