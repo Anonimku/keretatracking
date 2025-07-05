@@ -68,13 +68,13 @@ function loadStations() {
           weight: 2,
           fillColor: 'white',
           fillOpacity: 0.9
-        }).bindPopup(`
-          <div style="font-size: 13px;">
+        }).bindPopup(
+          `<div style="font-size: 13px;">
             <div style="font-size: 15px; font-weight: bold; color: #007bff;">${stasiun.Nama}</div>
             <b>Kode:</b> ${stasiun.Kode}<br>
             <b>Operator:</b> ${stasiun.Operator}
-          </div>
-        `).addTo(map);
+          </div>`
+        ).addTo(map);
 
         stationMap[stasiun.Nama] = L.latLng(lat, lon);
         stationMarkers.push(marker);
@@ -152,7 +152,6 @@ function findNearestIndex(latlngs, target) {
 function animateTrainRealtime(schedule) {
   const now = new Date();
   const dayName = now.toLocaleDateString('id-ID', { weekday: 'long' });
-
   if (!schedule.hari.includes(dayName)) return;
 
   const times = schedule.times.map(t => {
@@ -164,7 +163,6 @@ function animateTrainRealtime(schedule) {
 
   const start = times[0], end = times[times.length - 1];
   const trainId = schedule.train;
-
   if (now > end) {
     if (activeMarkers[trainId]) {
       activeMarkers[trainId].remove();
@@ -172,34 +170,18 @@ function animateTrainRealtime(schedule) {
     }
     return;
   }
-
   if (now < start) return;
 
   const startStation = schedule.stops[0];
   const endStation = schedule.stops[schedule.stops.length - 1];
-
-  if (!stationMap[startStation] || !stationMap[endStation]) {
-    console.warn("Stasiun tidak ditemukan:", startStation, endStation);
-    return;
-  }
+  if (!stationMap[startStation] || !stationMap[endStation]) return;
 
   const startIdx = findNearestIndex(allLatLngs, stationMap[startStation]);
   const endIdx = findNearestIndex(allLatLngs, stationMap[endStation]);
-
-  let latlngs = [];
-  if (startIdx >= 0 && endIdx >= 0) {
-    if (startIdx < endIdx) {
-      latlngs = allLatLngs.slice(startIdx, endIdx + 1);
-    } else {
-      latlngs = allLatLngs.slice(endIdx, startIdx + 1).reverse();
-    }
-  } else {
-    console.warn("Lintasan tidak ditemukan:", schedule.train);
-    return;
-  }
+  let latlngs = startIdx < endIdx ? allLatLngs.slice(startIdx, endIdx + 1) : allLatLngs.slice(endIdx, startIdx + 1).reverse();
 
   const t = (now - start) / (end - start);
-  const pos = getPositionOnRoute(latlngs, t);
+  let pos = getPositionOnRoute(latlngs, t);
 
   if (activeMarkers[trainId]) {
     activeMarkers[trainId].setLatLng(pos);
@@ -212,14 +194,39 @@ function animateTrainRealtime(schedule) {
     weight: 2,
     fillColor: 'red',
     fillOpacity: 1
-  }).bindPopup(`
-    <div style="font-size: 14px;">
-      <div style="font-size: 16px; font-weight: bold; color: red;">${trainId}</div>
-      <div>${schedule.stops.join(" → ")}</div>
-      <hr style="margin: 4px 0;">
-      <div><b>Stasiun berikutnya:</b> ${getNextStation(schedule, now)}</div>
-    </div>
-  `).addTo(map);
+  }).bindPopup(() => {
+    const nextStop = getNextStation(schedule, new Date());
+
+    const tableRows = schedule.stops.map((stop, idx) => {
+      const time = schedule.times[idx] || '-';
+      return `<tr>
+        <td style="padding: 4px 8px; border: 1px solid #ccc;">${stop}</td>
+        <td style="padding: 4px 8px; border: 1px solid #ccc; text-align: center;">${time}</td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div style="font-size: 14px; max-height: 300px; overflow-y: auto;">
+        <div style="font-size: 16px; font-weight: bold; color: red;">${trainId}</div>
+        <div>${schedule.stops.join(" → ")}</div>
+        <hr style="margin: 4px 0;">
+        <div><b>Stasiun berikutnya:</b> ${nextStop}</div>
+        <hr style="margin: 4px 0;">
+        <div style="font-weight: bold; margin-bottom: 4px;">Jadwal Lengkap:</div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr style="background-color: #f0f0f0;">
+              <th style="padding: 4px 8px; border: 1px solid #ccc;">Stasiun</th>
+              <th style="padding: 4px 8px; border: 1px solid #ccc;">Waktu</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).addTo(map);
 
   marker.on('click', () => {
     autoFollowTrainId = trainId;
@@ -239,12 +246,10 @@ function animateTrainRealtime(schedule) {
       delete activeMarkers[trainId];
       return;
     }
-    const t2 = (now2 - start) / (end - start);
-    const pos2 = getPositionOnRoute(latlngs, t2);
+    let t2 = (now2 - start) / (end - start);
+    let pos2 = getPositionOnRoute(latlngs, t2);
     marker.setLatLng(pos2);
-    if (autoFollowTrainId === trainId) {
-      map.setView(pos2);
-    }
+    if (autoFollowTrainId === trainId) map.setView(pos2);
     requestAnimationFrame(update);
   }
 
