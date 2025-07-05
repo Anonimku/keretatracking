@@ -17,7 +17,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   minZoom: 5
 }).addTo(map);
 
-// OpenRailwayMap overlay
+// OpenRailwayMap
 L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', {
   subdomains: ['a', 'b', 'c'],
   maxZoom: 20
@@ -27,86 +27,65 @@ L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', {
 map.attributionControl.setPrefix(false);
 map.attributionControl.setPosition('bottomleft');
 map.attributionControl.addAttribution(
-  'Data Peta &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> & <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a>'
+  'Data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>, <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a>'
 );
 L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
 
 // Jalur kereta
-const semuaPolyline = [];
-const jalurFiles = [
-  { file: 'data/JalurKertaCepat.json', color: '#ff0c00' },
-  { file: 'data/JalurLRT.json', color: '#00bd14' },
-  { file: 'data/JalurMRT.json', color: '#6865db' },
-  { file: 'data/JalurBiasa.json', color: '#ff8100' }
-];
+let allLatLngs = [];
 
-jalurFiles.forEach(({ file, color }) => {
-  fetch(file)
-    .then(res => res.json())
-    .then(geo => {
-      if (geo.type === "GeometryCollection") {
-        geo.geometries.forEach(geometry => {
-          if (geometry.type === "MultiLineString") {
-            geometry.coordinates.forEach(segment => {
-              const latlngs = segment.map(c => [c[1], c[0]]);
-              const polyline = L.polyline(latlngs, {
-                color,
-                weight: 3,
-                opacity: 0
-              }).addTo(map);
-              semuaPolyline.push(polyline);
-            });
-          }
+fetch('data/JalurKertaCepat.json')
+  .then(res => res.json())
+  .then(geo => {
+    const geometries = geo.geometries || (geo.features ? geo.features.map(f => f.geometry) : []);
+    geometries.forEach(g => {
+      if (g.type === "MultiLineString") {
+        g.coordinates.forEach(seg => {
+          const path = seg.map(c => L.latLng(c[1], c[0]));
+          allLatLngs.push(...path);
         });
       }
     });
-});
-
-map.on('zoomend', () => {
-  const zoom = map.getZoom();
-  semuaPolyline.forEach(line => {
-    if (zoom >= 20) {
-      line.setStyle({ opacity: 1 });
-      if (!map.hasLayer(line)) map.addLayer(line);
-    } else {
-      line.setStyle({ opacity: 0 });
-      if (map.hasLayer(line)) map.removeLayer(line);
-    }
+    loadStations();
   });
-});
 
 // Stasiun
 const stationMap = {};
 const stationMarkers = [];
-let allLatLngs = [];
 
-fetch('https://script.google.com/macros/s/AKfycbxOOcb5HYdFFR8Pwv4bZ75UHARyDg_tQbzNH9oROpBgQy1IcNef0PrIHKtOErm-wGaR/exec')
-  .then(res => res.json())
-  .then(data => {
-    data.forEach(stasiun => {
-      const lat = parseFloat((stasiun.Lat || '').toString().replace(',', '.'));
-      const lon = parseFloat((stasiun.Lon || '').toString().replace(',', '.'));
-      if (isNaN(lat) || isNaN(lon)) return;
-      const marker = L.circleMarker([lat, lon], {
-        radius: 6,
-        color: 'black',
-        weight: 2,
-        fillColor: 'white',
-        fillOpacity: 0.9
-      }).bindPopup(`
-        <div style="font-size: 13px; line-height: 1.4;">
-          <div style="font-size: 15px; font-weight: bold; color: #007bff;">${stasiun.Nama}</div>
-          <b>Kode:</b> ${stasiun.Kode}<br>
-          <b>Operator:</b> ${stasiun.Operator}
-        </div>
-      `).addTo(map);
-      stationMap[stasiun.Nama] = L.latLng(lat, lon);
-      stationMarkers.push(marker);
+function loadStations() {
+  fetch('https://script.google.com/macros/s/AKfycbxOOcb5HYdFFR8Pwv4bZ75UHARyDg_tQbzNH9oROpBgQy1IcNef0PrIHKtOErm-wGaR/exec')
+    .then(res => res.json())
+    .then(data => {
+      data.forEach(stasiun => {
+        const lat = parseFloat((stasiun.Lat || '').toString().replace(',', '.'));
+        const lon = parseFloat((stasiun.Lon || '').toString().replace(',', '.'));
+        if (isNaN(lat) || isNaN(lon)) return;
+
+        const marker = L.circleMarker([lat, lon], {
+          radius: 6,
+          color: 'black',
+          weight: 2,
+          fillColor: 'white',
+          fillOpacity: 0.9
+        }).bindPopup(`
+          <div style="font-size: 13px;">
+            <div style="font-size: 15px; font-weight: bold; color: #007bff;">${stasiun.Nama}</div>
+            <b>Kode:</b> ${stasiun.Kode}<br>
+            <b>Operator:</b> ${stasiun.Operator}
+          </div>
+        `).addTo(map);
+
+        stationMap[stasiun.Nama] = L.latLng(lat, lon);
+        stationMarkers.push(marker);
+      });
+
+      map.fire('zoomend');
+      loadSchedule();
     });
-    map.fire('zoomend');
-    loadRoute();
-  });
+}
 
+// Zoom handler
 map.on('zoomend', () => {
   const zoom = map.getZoom();
   stationMarkers.forEach(marker => {
@@ -115,21 +94,7 @@ map.on('zoomend', () => {
   });
 });
 
-function loadRoute() {
-  fetch('data/JalurKertaCepat.json')
-    .then(res => res.json())
-    .then(geo => {
-      geo.geometries.forEach(g => {
-        if (g.type === "MultiLineString") {
-          g.coordinates.forEach(seg => {
-            allLatLngs.push(...seg.map(c => L.latLng(c[1], c[0])));
-          });
-        }
-      });
-      loadSchedule();
-    });
-}
-
+// Jadwal & Animasi Kereta
 let trainSchedule = [];
 let activeMarkers = {};
 let autoFollowTrainId = null;
@@ -161,92 +126,6 @@ function getPositionOnRoute(latlngs, t) {
   return interpolateLatLng(latlngs[idx], latlngs[idx + 1] || latlngs[idx], frac);
 }
 
-function animateTrainRealtime(schedule) {
-  const now = new Date();
-  const dayName = now.toLocaleDateString('id-ID', { weekday: 'long' });
-
-  // Cek hari operasi
-  if (!schedule.hari.includes(dayName)) return;
-
-  // Konversi waktu
-  const times = schedule.times.map(t => {
-    const [hh, mm] = t.split(':').map(Number);
-    const d = new Date(now);
-    d.setHours(hh, mm, 0, 0);
-    return d;
-  });
-
-  const start = times[0], end = times[times.length - 1];
-
-  // ⛔ Jangan munculkan kereta sebelum jam berangkat atau setelah tiba
-  if (now < start || now > end) return;
-
-  // ✅ Jika marker sudah ada, cukup update posisinya
-  if (activeMarkers[schedule.train]) return;
-
-  // Hitung rute
-  const startStation = schedule.stops[0];
-  const endStation = schedule.stops[schedule.stops.length - 1];
-
-  const distStart = allLatLngs[0].distanceTo(stationMap[startStation] || allLatLngs[0]);
-  const distEnd = allLatLngs[0].distanceTo(stationMap[endStation] || allLatLngs[0]);
-
-  const latlngs = distStart < distEnd ? allLatLngs : [...allLatLngs].reverse();
-
-  // Posisi awal berdasarkan waktu saat ini
-  const t = (now - start) / (end - start);
-  const pos = getPositionOnRoute(latlngs, t);
-
-  const marker = L.circleMarker(pos, {
-    radius: 7,
-    color: 'white',
-    weight: 2,
-    fillColor: 'red',
-    fillOpacity: 1
-  }).bindPopup(`
-    <div style="font-size: 14px;">
-      <div style="font-size: 16px; font-weight: bold; color: red;">${schedule.train}</div>
-      <div>${schedule.stops.join(" → ")}</div>
-      <hr style="margin: 4px 0;">
-      <div><b>Stasiun berikutnya:</b> ${getNextStation(schedule, now)}</div>
-    </div>
-  `).addTo(map);
-
-  marker.on('click', () => {
-    autoFollowTrainId = schedule.train;
-    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 12));
-  });
-
-  marker.on('popupclose', () => {
-    autoFollowTrainId = null;
-  });
-
-  activeMarkers[schedule.train] = marker;
-
-  function update() {
-    const now2 = new Date();
-
-    if (now2 > end) {
-      marker.remove();
-      delete activeMarkers[schedule.train];
-      return;
-    }
-
-    const t2 = (now2 - start) / (end - start);
-    const pos2 = getPositionOnRoute(latlngs, t2);
-    marker.setLatLng(pos2);
-
-    if (autoFollowTrainId === schedule.train) {
-      map.setView(pos2);
-    }
-
-    requestAnimationFrame(update);
-  }
-
-  update();
-}
-
-
 function getNextStation(schedule, now) {
   for (let i = 0; i < schedule.times.length; i++) {
     const [hh, mm] = schedule.times[i].split(':').map(Number);
@@ -255,6 +134,121 @@ function getNextStation(schedule, now) {
     if (time > now) return `${schedule.stops[i]} (${schedule.times[i]})`;
   }
   return schedule.stops[schedule.stops.length - 1];
+}
+
+function findNearestIndex(latlngs, target) {
+  let minDist = Infinity;
+  let index = -1;
+  latlngs.forEach((point, i) => {
+    const dist = point.distanceTo(target);
+    if (dist < minDist) {
+      minDist = dist;
+      index = i;
+    }
+  });
+  return index;
+}
+
+function animateTrainRealtime(schedule) {
+  const now = new Date();
+  const dayName = now.toLocaleDateString('id-ID', { weekday: 'long' });
+
+  if (!schedule.hari.includes(dayName)) return;
+
+  const times = schedule.times.map(t => {
+    const [hh, mm] = t.split(':').map(Number);
+    const d = new Date(now);
+    d.setHours(hh, mm, 0, 0);
+    return d;
+  });
+
+  const start = times[0], end = times[times.length - 1];
+  const trainId = schedule.train;
+
+  if (now > end) {
+    if (activeMarkers[trainId]) {
+      activeMarkers[trainId].remove();
+      delete activeMarkers[trainId];
+    }
+    return;
+  }
+
+  if (now < start) return;
+
+  const startStation = schedule.stops[0];
+  const endStation = schedule.stops[schedule.stops.length - 1];
+
+  if (!stationMap[startStation] || !stationMap[endStation]) {
+    console.warn("Stasiun tidak ditemukan:", startStation, endStation);
+    return;
+  }
+
+  const startIdx = findNearestIndex(allLatLngs, stationMap[startStation]);
+  const endIdx = findNearestIndex(allLatLngs, stationMap[endStation]);
+
+  let latlngs = [];
+  if (startIdx >= 0 && endIdx >= 0) {
+    if (startIdx < endIdx) {
+      latlngs = allLatLngs.slice(startIdx, endIdx + 1);
+    } else {
+      latlngs = allLatLngs.slice(endIdx, startIdx + 1).reverse();
+    }
+  } else {
+    console.warn("Lintasan tidak ditemukan:", schedule.train);
+    return;
+  }
+
+  const t = (now - start) / (end - start);
+  const pos = getPositionOnRoute(latlngs, t);
+
+  if (activeMarkers[trainId]) {
+    activeMarkers[trainId].setLatLng(pos);
+    return;
+  }
+
+  const marker = L.circleMarker(pos, {
+    radius: 8,
+    color: 'white',
+    weight: 2,
+    fillColor: 'red',
+    fillOpacity: 1
+  }).bindPopup(`
+    <div style="font-size: 14px;">
+      <div style="font-size: 16px; font-weight: bold; color: red;">${trainId}</div>
+      <div>${schedule.stops.join(" → ")}</div>
+      <hr style="margin: 4px 0;">
+      <div><b>Stasiun berikutnya:</b> ${getNextStation(schedule, now)}</div>
+    </div>
+  `).addTo(map);
+
+  marker.on('click', () => {
+    autoFollowTrainId = trainId;
+    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 12));
+  });
+
+  marker.on('popupclose', () => {
+    autoFollowTrainId = null;
+  });
+
+  activeMarkers[trainId] = marker;
+
+  function update() {
+    const now2 = new Date();
+    if (now2 >= end) {
+      marker.remove();
+      delete activeMarkers[trainId];
+      return;
+    }
+    const t2 = (now2 - start) / (end - start);
+    const pos2 = getPositionOnRoute(latlngs, t2);
+    marker.setLatLng(pos2);
+    if (autoFollowTrainId === trainId) {
+      map.setView(pos2);
+    }
+    requestAnimationFrame(update);
+  }
+
+  requestAnimationFrame(update);
 }
 
 function startRealtimeTrains() {
