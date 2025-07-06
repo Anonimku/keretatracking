@@ -154,35 +154,84 @@ function animateTrainRealtime(schedule) {
   const dayName = now.toLocaleDateString('id-ID', { weekday: 'long' });
   if (!schedule.hari.includes(dayName)) return;
 
+  // Simpan waktu asli (untuk tampilan)
+  const realTimes = schedule.times.slice();
+
+  // Waktu datang dimajukan 5 menit (tiba lebih awal)
   const times = schedule.times.map(t => {
     const [hh, mm] = t.split(':').map(Number);
     const d = new Date(now);
-    d.setHours(hh, mm, 0, 0);
+    d.setHours(hh);
+    d.setMinutes(mm - 5); // 5 menit lebih awal
     return d;
   });
 
-  const start = times[0], end = times[times.length - 1];
   const trainId = schedule.train;
-  if (now > end) {
+
+  // Jika sudah lewat akhir perjalanan, hapus marker
+  if (now > times[times.length - 1]) {
     if (activeMarkers[trainId]) {
       activeMarkers[trainId].remove();
       delete activeMarkers[trainId];
     }
     return;
   }
-  if (now < start) return;
 
+  // Jika belum mulai, jangan tampilkan dulu
+  if (now < times[0]) return;
+
+  // Validasi koordinat stasiun awal dan akhir
   const startStation = schedule.stops[0];
   const endStation = schedule.stops[schedule.stops.length - 1];
   if (!stationMap[startStation] || !stationMap[endStation]) return;
 
-  const startIdx = findNearestIndex(allLatLngs, stationMap[startStation]);
-  const endIdx = findNearestIndex(allLatLngs, stationMap[endStation]);
-  let latlngs = startIdx < endIdx ? allLatLngs.slice(startIdx, endIdx + 1) : allLatLngs.slice(endIdx, startIdx + 1).reverse();
+  // Buat segmen antar stasiun
+  const segmentCoords = [];
+  const segmentTimes = [];
 
-  const t = (now - start) / (end - start);
-  let pos = getPositionOnRoute(latlngs, t);
+  for (let i = 0; i < schedule.stops.length - 1; i++) {
+    const from = stationMap[schedule.stops[i]];
+    const to = stationMap[schedule.stops[i + 1]];
+    const fromIdx = findNearestIndex(allLatLngs, from);
+    const toIdx = findNearestIndex(allLatLngs, to);
+    const path = fromIdx < toIdx
+      ? allLatLngs.slice(fromIdx, toIdx + 1)
+      : allLatLngs.slice(toIdx, fromIdx + 1).reverse();
 
+    segmentCoords.push(path);
+    segmentTimes.push([times[i], times[i + 1]]);
+  }
+
+  // Cari segmen aktif berdasarkan waktu sekarang
+  let segIdx = segmentTimes.findIndex(([start, end]) => now >= start && now < end);
+
+  // Jika kereta sedang berhenti (dalam jeda antar segmen)
+  let isStopped = false;
+  if (segIdx === -1) {
+    // Cek apakah kereta sedang berhenti di stasiun (±5 menit)
+    for (let i = 0; i < times.length; i++) {
+      const t = times[i].getTime();
+      if (Math.abs(now.getTime() - t) < 5 * 60 * 1000) {
+        isStopped = true;
+        segIdx = i;
+        break;
+      }
+    }
+  }
+
+  let pos;
+  if (isStopped || segIdx === -1) {
+    // Jika berhenti, ambil posisi stasiun
+    const stopIdx = segIdx >= segmentCoords.length ? schedule.stops.length - 1 : segIdx;
+    pos = stationMap[schedule.stops[stopIdx]];
+  } else {
+    // Hitung t pada segmen
+    const [segStart, segEnd] = segmentTimes[segIdx];
+    const t = (now - segStart) / (segEnd - segStart);
+    pos = getPositionOnRoute(segmentCoords[segIdx], t);
+  }
+
+  // Update atau buat marker
   if (activeMarkers[trainId]) {
     activeMarkers[trainId].setLatLng(pos);
     return;
@@ -198,7 +247,7 @@ function animateTrainRealtime(schedule) {
     const nextStop = getNextStation(schedule, new Date());
 
     const tableRows = schedule.stops.map((stop, idx) => {
-      const time = schedule.times[idx] || '-';
+      const time = realTimes[idx] || '-';
       return `<tr>
         <td style="padding: 4px 8px; border: 1px solid #ccc;">${stop}</td>
         <td style="padding: 4px 8px; border: 1px solid #ccc; text-align: center;">${time}</td>
@@ -239,17 +288,29 @@ function animateTrainRealtime(schedule) {
 
   activeMarkers[trainId] = marker;
 
+  // Update posisi animasi real-time
   function update() {
     const now2 = new Date();
-    if (now2 >= end) {
+    if (now2 >= times[times.length - 1]) {
       marker.remove();
       delete activeMarkers[trainId];
       return;
     }
-    let t2 = (now2 - start) / (end - start);
-    let pos2 = getPositionOnRoute(latlngs, t2);
-    marker.setLatLng(pos2);
-    if (autoFollowTrainId === trainId) map.setView(pos2);
+
+    // Update posisi
+    let newSegIdx = segmentTimes.findIndex(([start, end]) => now2 >= start && now2 < end);
+    let newPos;
+
+    if (newSegIdx === -1) {
+      newPos = pos;
+    } else {
+      const [segStart, segEnd] = segmentTimes[newSegIdx];
+      const t2 = (now2 - segStart) / (segEnd - segStart);
+      newPos = getPositionOnRoute(segmentCoords[newSegIdx], t2);
+    }
+
+    marker.setLatLng(newPos);
+    if (autoFollowTrainId === trainId) map.setView(newPos);
     requestAnimationFrame(update);
   }
 
