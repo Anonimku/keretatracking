@@ -87,4 +87,3 @@ requestAnimationFrame(update); }
 
 function startRealtimeTrains() { trainSchedule.forEach(schedule => animateTrainRealtime(schedule)); setInterval(() => { trainSchedule.forEach(schedule => animateTrainRealtime(schedule)); }, 60000); }
 
-                                                                                                                                                                                                
