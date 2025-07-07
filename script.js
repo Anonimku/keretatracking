@@ -331,3 +331,4 @@ function startRealtimeTrains() {
     trainSchedule.forEach(schedule => animateTrainRealtime(schedule));
   }, 60 * 1000);
 }
+
