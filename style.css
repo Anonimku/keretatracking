@@ -32,3 +32,31 @@ body, html {
   font-size: 16px;
 }
 
+.leaflet-tooltip.train-tooltip {
+  background-color: #ff0000 !important; /* Merah solid */
+  color: white !important;              /* Teks putih */
+  border: none !important;
+  opacity: 1 !important;                /* Tidak transparan */
+  font-family: 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+.leaflet-tooltip.train-tooltip.leaflet-tooltip-right::before {
+  border-right-color: #ff0000 !important; /* Warna panah merah untuk arah kanan */
+}
+
+.leaflet-tooltip.train-tooltip.leaflet-tooltip-left::before {
+  border-left-color: #ff0000 !important; /* Warna panah merah untuk arah kiri (jika kamu pakai arah kiri nanti) */
+}
+
+.leaflet-tooltip.train-tooltip.leaflet-tooltip-top::before {
+  border-top-color: #ff0000 !important;
+}
+
+.leaflet-tooltip.train-tooltip.leaflet-tooltip-bottom::before {
+  border-bottom-color: #ff0000 !important;
+}
