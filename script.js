@@ -197,19 +197,105 @@ function animateTrainRealtime(schedule) {
     return;
   }
 
-  const marker = L.circleMarker(pos, {
-    radius: 8,
-    color: 'white',
-    weight: 2,
-    fillColor: 'red',
-    fillOpacity: 1
-  }).bindPopup(() => {
-    const nextStop = getNextStation(schedule, new Date());
-    const rows = schedule.stops.map((s, i) => `
-      <tr><td>${s}</td><td>${schedule.times[i]}</td></tr>`).join('');
-    return `<b>${trainId}</b><br>→ ${nextStop}
-      <hr><table><tr><th>Stasiun</th><th>Waktu</th></tr>${rows}</table>`;
-  }).addTo(map);
+const marker = L.circleMarker(pos, {
+  radius: 8,
+  color: 'white',
+  weight: 2,
+  fillColor: 'red',
+  fillOpacity: 1
+})
+.bindTooltip(`${trainId}`, {
+  permanent: false, // awalnya tidak permanen
+  direction: 'right',
+  offset: [10, 0],
+  className: 'train-tooltip'
+})
+
+
+.bindPopup(() => {
+  const now = new Date();
+  const nextIndex = schedule.times.findIndex(time => {
+    const [hh, mm] = time.split(':').map(Number);
+    const d = new Date(now);
+    d.setHours(hh, mm, 0, 0);
+    return d > now;
+  });
+
+  const nextStation = schedule.stops[nextIndex] || '-';
+  const nextTime = schedule.times[nextIndex] || '-';
+
+  const rows = schedule.stops.map((s, i) => `
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 6px 8px; color: #333;">${s}</td>
+      <td style="padding: 6px 8px; color: #555; text-align: right;">${schedule.times[i] || '-'}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div style="font-family: 'Segoe UI', Roboto, sans-serif; font-size: 14px; max-width: 270px; color: #222; padding: 10px;">
+
+      <!-- Header Kereta -->
+      <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+        <span class="material-icons" style="color: #e53935;">directions_railway</span>
+        <span style="font-weight: 700; font-size: 18px; color: #d32f2f;">${trainId}</span>
+      </div>
+
+      <!-- Rute -->
+      <div style="font-size: 13px; font-weight: 600; color: #333;">
+        ${schedule.stops[0]} - ${schedule.stops[schedule.stops.length - 1]}
+      </div>
+
+      <!-- Garis Pemisah -->
+      <div style="height: 1px; background: #ccc; margin: 10px 0;"></div>
+
+      <!-- Stasiun Berikutnya + Waktu (sejajar horizontal) -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="font-size: 13px; color: #444;">
+          Stasiun Berikutnya: <strong>${nextStation}</strong>
+        </div>
+        <div style="font-size: 12px; background: #1976d2; color: white; padding: 2px 10px; border-radius: 6px;">
+          ${nextTime}
+        </div>
+      </div>
+
+      <!-- Garis Pemisah -->
+      <div style="height: 1px; background: #ccc; margin: 10px 0;"></div>
+
+      <!-- Jadwal Kereta -->
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="border-bottom: 2px solid #ccc;">
+            <th style="text-align: left; padding: 6px 8px; color: #333;">Stasiun</th>
+            <th style="text-align: right; padding: 6px 8px; color: #333;">Waktu</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}).addTo(map);
+
+const zoom = map.getZoom();
+if (zoom >= 13) marker.openTooltip();
+
+map.on('zoomend', () => {
+  const currentZoom = map.getZoom();
+  if (currentZoom >= 11) {
+    marker.openTooltip();
+  } else {
+    marker.closeTooltip();
+  }
+});
+
+marker.on('popupopen', () => {
+  marker.closeTooltip();
+});
+
+marker.on('popupclose', () => {
+  if (map.getZoom() >= 11) marker.openTooltip();
+});
 
   marker.on('click', () => {
     autoFollowTrainId = trainId;
