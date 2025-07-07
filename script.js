@@ -214,6 +214,7 @@ const marker = L.circleMarker(pos, {
 
 .bindPopup(() => {
   const now = new Date();
+
   const nextIndex = schedule.times.findIndex(time => {
     const [hh, mm] = time.split(':').map(Number);
     const d = new Date(now);
@@ -221,61 +222,77 @@ const marker = L.circleMarker(pos, {
     return d > now;
   });
 
-  const nextStation = schedule.stops[nextIndex] || '-';
-  const nextTime = schedule.times[nextIndex] || '-';
+  const nextStation = schedule.stops[nextIndex] || '–';
+  const nextTime = schedule.times[nextIndex] || '–';
 
-  const rows = schedule.stops.map((s, i) => `
-    <tr style="border-bottom: 1px solid #eee;">
-      <td style="padding: 6px 8px; color: #333;">${s}</td>
-      <td style="padding: 6px 8px; color: #555; text-align: right;">${schedule.times[i] || '-'}</td>
-    </tr>
+  const trainName = `Kereta ${trainId}`;
+  const from = schedule.stops[0];
+  const to = schedule.stops[schedule.stops.length - 1];
+
+  const photo = 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/KCIC_400-5_with_Whoosh_logo.jpg/1920px-KCIC_400-5_with_Whoosh_logo.jpg';
+  const logo = 'https://upload.wikimedia.org/wikipedia/commons/a/ab/WHOOSH_Logo.svg';
+
+  const rows = schedule.stops.map((stop, i) => `
+    <div style="padding: 6px 10px; font-size: 12px; display: flex; justify-content: space-between; background: #f6f6f6; border-radius: 6px; margin-bottom: 6px;">
+      <span>${stop}</span>
+      <span style="color: #666;">${schedule.times[i] || '–'}</span>
+    </div>
   `).join('');
 
   return `
-    <div style="font-family: 'Segoe UI', Roboto, sans-serif; font-size: 14px; max-width: 270px; color: #222; padding: 10px;">
+    <style>
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
 
-      <!-- Header Kereta -->
-      <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-        <span class="material-icons" style="color: #e53935;">directions_railway</span>
-        <span style="font-weight: 700; font-size: 18px; color: #d32f2f;">${trainId}</span>
+    <div class="no-scrollbar" style="
+      width: 270px;
+      max-height: 280px;
+      overflow-y: auto;
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      background: white;
+      color: #222;
+      border-radius: 10px;
+      scrollbar-width: none;       /* Firefox */
+      -ms-overflow-style: none;    /* IE/Edge */
+    ">
+
+      <!-- Gambar Kereta -->
+      <img src="${photo}" alt="Kereta WHOOSH"
+           style="width: 100%; border-top-left-radius: 10px; border-top-right-radius: 10px;">
+
+      <!-- Header: Nama + Logo -->
+      <div style="padding: 10px 14px 6px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="font-size: 14px; font-weight: 600;">${trainName}</div>
+        <img src="${logo}" alt="Logo WHOOSH" style="height: 10px; opacity: 0.85;">
       </div>
 
       <!-- Rute -->
-      <div style="font-size: 13px; font-weight: 600; color: #333;">
-        ${schedule.stops[0]} - ${schedule.stops[schedule.stops.length - 1]}
+      <div style="font-size: 12px; color: #666; padding: 0 14px 10px;">
+        ${from} — ${to}
       </div>
 
-      <!-- Garis Pemisah -->
-      <div style="height: 1px; background: #ccc; margin: 10px 0;"></div>
-
-      <!-- Stasiun Berikutnya + Waktu (sejajar horizontal) -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <div style="font-size: 13px; color: #444;">
-          Stasiun Berikutnya: <strong>${nextStation}</strong>
-        </div>
-        <div style="font-size: 12px; background: #1976d2; color: white; padding: 2px 10px; border-radius: 6px;">
-          ${nextTime}
-        </div>
+      <!-- Stasiun Berikutnya -->
+      <div style="font-size: 12px; padding: 0 14px 12px;">
+        <div style="color: #888;">Stasiun berikutnya:</div>
+        <div><strong>${nextStation}</strong> <span style="color: #333;">${nextTime}</span></div>
       </div>
 
-      <!-- Garis Pemisah -->
-      <div style="height: 1px; background: #ccc; margin: 10px 0;"></div>
+      <!-- Divider -->
+      <div style="height: 1px; background: #eee; margin: 0 14px 10px;"></div>
 
-      <!-- Jadwal Kereta -->
-      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-        <thead>
-          <tr style="border-bottom: 2px solid #ccc;">
-            <th style="text-align: left; padding: 6px 8px; color: #333;">Stasiun</th>
-            <th style="text-align: right; padding: 6px 8px; color: #333;">Waktu</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>
+      <!-- Jadwal -->
+      <div style="padding: 0 14px 14px;">
+        <div style="font-size: 12px; color: #888; margin-bottom: 6px;">Jadwal lengkap:</div>
+        ${rows}
+      </div>
+
     </div>
   `;
 }).addTo(map);
+
+
 
 const zoom = map.getZoom();
 if (zoom >= 13) marker.openTooltip();
@@ -331,3 +348,22 @@ function startRealtimeTrains() {
     trainSchedule.forEach(schedule => animateTrainRealtime(schedule));
   }, 60 * 1000);
 }
+
+// ============ LOAD GEOJSON JALUR =============
+fetch('data/JalurMRT.json') // ← Ganti file GeoJSON untuk MRT
+  .then(res => res.json())
+  .then(geo => {
+    const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
+    geometries.forEach(g => {
+      if (g.type === "MultiLineString") {
+        g.coordinates.forEach(seg => {
+          const path = seg.map(c => L.latLng(c[1], c[0]));
+          jalurPerSegmen.push(path);
+        });
+      } else if (g.type === "LineString") {
+        const path = g.coordinates.map(c => L.latLng(c[1], c[0]));
+        jalurPerSegmen.push(path);
+      }
+    });
+    loadStations();
+  });
