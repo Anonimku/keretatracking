@@ -27,6 +27,8 @@ L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo
 // ==================== DATA ====================
 let jalurArah1 = []; // Untuk arah A ke B
 let jalurArah2 = []; // Untuk arah B ke A
+let jalurLRTArah1 = [];
+let jalurLRTArah2 = [];
 let stationMap = {};
 let stationMarkers = [];
 let trainSchedule = [];
@@ -60,6 +62,34 @@ fetch('data/JalurKertaCepat.json')
     loadStations();
   });
 
+fetch('data/JalurLRT.json')
+  .then(res => res.json())
+  .then(geo => {
+    const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
+
+    geometries.forEach(g => {
+      if (g.type === "MultiLineString") {
+        g.coordinates.forEach((seg, index) => {
+          const path = seg.map(c => L.latLng(c[1], c[0]));
+
+          if (index % 2 === 0) {
+  jalurLRTArah1.push(path); // simpan sebagai segmen
+} else {
+  jalurLRTArah2.push(path); // simpan sebagai segmen
+}
+
+          // Untuk debugging visualisasi (boleh dihapus jika ingin tersembunyi)
+          L.polyline(path, {
+            color: "#800080", // LRT Ungu
+            weight: 4,
+            opacity: 0
+          }).addTo(map);
+        });
+      }
+    });
+  });
+
+
 
 
 // ============ STASIUN DARI SHEET =============
@@ -86,7 +116,9 @@ function loadStations() {
       });
 
       map.fire('zoomend');
-      loadSchedule();
+      loadScheduleLRT();
+loadScheduleKCIC();
+
     });
 }
 
@@ -96,20 +128,39 @@ map.on('zoomend', () => {
 });
 
 // ============== JADWAL KERETA =================
-function loadSchedule() {
+function loadScheduleLRT() {
+  fetch("https://script.google.com/macros/s/AKfycbxFqzbqbNLEhh0EEQLKae8wxksxrJNbv0fE1JZgpUvCk_Dl7XVqYAUDDpoNzF2AVUj1/exec")
+    .then(res => res.json())
+    .then(data => {
+      const lrtData = data.map(item => ({
+        train: item.train,
+        stops: Array.isArray(item.stops) ? item.stops : item.stops.split(',').map(s => s.trim()),
+        times: Array.isArray(item.times) ? item.times : item.times.split(',').map(s => s.trim()),
+        hari: Array.isArray(item.hari) ? item.hari : item.hari.split(',').map(s => s.trim()),
+        arah: 1 // default
+      }));
+      trainSchedule.push(...lrtData);
+      console.log("Jadwal LRT dimuat:", trainSchedule);
+      startRealtimeTrains(); // ini harus kamu pastikan bekerja
+    });
+}
+
+function loadScheduleKCIC() {
   fetch("https://script.google.com/macros/s/AKfycbyIsWOyuir9j0zaqs8imoii72IEEtN990cfvFy-pFlN663K5o3OvT8i3fX0yXZQ_Ct7/exec")
     .then(res => res.json())
     .then(data => {
-      trainSchedule = data.map(item => ({
-  train: item.train,
-  stops: item.stops.split(',').map(s => s.trim()),
-  times: item.times.split(',').map(s => s.trim()),
-  hari: item.hari.split(',').map(s => s.trim()),
-  arah: parseInt(item.arah || '1') // default ke arah 1
-}));
+      const kcicData = data.map(item => ({
+        train: item.train,
+        stops: item.stops.split(',').map(s => s.trim()),
+        times: item.times.split(',').map(s => s.trim()),
+        hari: item.hari.split(',').map(s => s.trim()),
+        arah: parseInt(item.arah || '1')
+      }));
+      trainSchedule.push(...kcicData);
       startRealtimeTrains();
     });
 }
+
 
 // ============== TOOLS =====================
 function interpolateLatLng(start, end, t) {
@@ -149,14 +200,16 @@ function getNextStation(schedule, now) {
 }
 
 // ========== RUTE ANTAR STASIUN ============
-function findRouteBetweenStations(fromStation, toStation, arah = '1') {
+function findRouteBetweenStations(fromStation, toStation, arah = '1', isLRT = false) {
   const from = stationMap[fromStation];
   const to = stationMap[toStation];
   if (!from || !to) return null;
 
   let bestPath = null;
   let minDistSum = Infinity;
-  const jalur = arah === '1' ? jalurArah1 : jalurArah2;
+  const jalur = isLRT
+    ? (arah === '1' ? jalurLRTArah1 : jalurLRTArah2)
+    : (arah === '1' ? jalurArah1 : jalurArah2);
 
   jalur.forEach(path => {
     const i1 = findNearestIndex(path, from);
@@ -165,7 +218,8 @@ function findRouteBetweenStations(fromStation, toStation, arah = '1') {
     const d2 = path[i2].distanceTo(to);
     const totalDist = d1 + d2;
 
-    if (totalDist < minDistSum) {
+    // ✅ Tambahkan batas maksimum jarak ke jalur (misal: 500 meter)
+    if (totalDist < minDistSum && d1 < 500 && d2 < 500) {
       minDistSum = totalDist;
       bestPath = i1 < i2 ? path.slice(i1, i2 + 1) : path.slice(i2, i1 + 1).reverse();
     }
@@ -174,8 +228,6 @@ function findRouteBetweenStations(fromStation, toStation, arah = '1') {
   return bestPath;
 }
 
-
-// ============= ANIMASI KERETA =============
 function animateTrainRealtime(schedule) {
   const now = new Date();
   const dayName = now.toLocaleDateString('id-ID', { weekday: 'long' });
@@ -188,51 +240,63 @@ function animateTrainRealtime(schedule) {
     return d;
   });
 
-  const start = times[0], end = times[times.length - 1];
+  const start = times[0];
+  const end = times[times.length - 1];
   const trainId = schedule.train;
-  if (now > end) {
+  const arah = parseInt(trainId.replace(/\D/g, '')) % 2 === 1 ? '2' : '1';
+  const isLRT = trainId.toLowerCase().includes("lrt");
+
+  if (now < start || now > end) {
     if (activeMarkers[trainId]) {
       activeMarkers[trainId].remove();
       delete activeMarkers[trainId];
     }
     return;
   }
-  if (now < start) return;
 
-  // ⬇️ Tentukan arah berdasarkan nomor kereta (ganjil = arah1, genap = arah2)
-const arah = parseInt(trainId.replace(/\D/g, '')) % 2 === 1 ? '2' : '1';
+  const getTrainPosition = (now) => {
+    let currentIndex = -1;
+    for (let i = 0; i < times.length - 1; i++) {
+      if (now >= times[i] && now <= times[i + 1]) {
+        currentIndex = i;
+        break;
+      }
+    }
+    if (currentIndex === -1) return null;
 
+    const from = schedule.stops[currentIndex];
+    const to = schedule.stops[currentIndex + 1];
+    const tStart = times[currentIndex];
+    const tEnd = times[currentIndex + 1];
+    const segPath = findRouteBetweenStations(from, to, arah, isLRT);
+    if (!segPath || segPath.length === 0) return null;
 
-  let latlngs = [];
-  for (let i = 0; i < schedule.stops.length - 1; i++) {
-    const seg = findRouteBetweenStations(schedule.stops[i], schedule.stops[i + 1], arah);
-    if (seg) latlngs.push(...seg);
-  }
-  if (latlngs.length === 0) return;
+    const t = (now - tStart) / (tEnd - tStart);
+    const pos = getPositionOnRoute(segPath, t);
+    return pos;
+  };
 
-  const t = (now - start) / (end - start);
-  const pos = getPositionOnRoute(latlngs, t);
+  const pos = getTrainPosition(now);
+  if (!pos) return;
 
+  // Marker update atau buat baru
   if (activeMarkers[trainId]) {
     activeMarkers[trainId].setLatLng(pos);
-    return;
-  }
-
-  const marker = L.circleMarker(pos, {
-    radius: 8,
-    color: 'white',
-    weight: 2,
-    fillColor: 'red',
-    fillOpacity: 1
-  })
+  } else {
+    const marker = L.circleMarker(pos, {
+      radius: isLRT ? 6 : 8,
+      color: 'white',
+      weight: 2,
+      fillColor: isLRT ? '#800080' : '#FF0000',
+      fillOpacity: 1
+    })
     .bindTooltip(`${trainId}`, {
       permanent: false,
       direction: 'right',
       offset: [10, 0],
-      className: 'train-tooltip'
+      className: isLRT ? 'train-tooltip small' : 'train-tooltip'
     })
     .bindPopup(() => {
-      const now = new Date();
       const nextIndex = schedule.times.findIndex(time => {
         const [hh, mm] = time.split(':').map(Number);
         const d = new Date(now);
@@ -243,10 +307,16 @@ const arah = parseInt(trainId.replace(/\D/g, '')) % 2 === 1 ? '2' : '1';
       const nextStation = schedule.stops[nextIndex] || '–';
       const nextTime = schedule.times[nextIndex] || '–';
       const trainName = `Kereta ${trainId}`;
-      const from = schedule.stops[0];
-      const to = schedule.stops[schedule.stops.length - 1];
-      const photo = 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/KCIC_400-5_with_Whoosh_logo.jpg/1920px-KCIC_400-5_with_Whoosh_logo.jpg';
-      const logo = 'https://upload.wikimedia.org/wikipedia/commons/a/ab/WHOOSH_Logo.svg';
+      const dari = schedule.stops[0];
+      const ke = schedule.stops[schedule.stops.length - 1];
+
+      const photo = isLRT
+        ? 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/LRT_Jakarta.jpg/1280px-LRT_Jakarta.jpg'
+        : 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/KCIC_400-5_with_Whoosh_logo.jpg/1920px-KCIC_400-5_with_Whoosh_logo.jpg';
+
+      const logo = isLRT
+        ? 'https://upload.wikimedia.org/wikipedia/id/0/0a/Logo_LRT_Jakarta.png'
+        : 'https://upload.wikimedia.org/wikipedia/commons/a/ab/WHOOSH_Logo.svg';
 
       const rows = schedule.stops.map((stop, i) => `
         <div style="padding: 6px 10px; font-size: 12px; display: flex; justify-content: space-between; background: #f6f6f6; border-radius: 6px; margin-bottom: 6px;">
@@ -256,42 +326,19 @@ const arah = parseInt(trainId.replace(/\D/g, '')) % 2 === 1 ? '2' : '1';
       `).join('');
 
       return `
-        <style>
-          .no-scrollbar::-webkit-scrollbar {
-            display: none;
-          }
-        </style>
-
-        <div class="no-scrollbar" style="
-          width: 270px;
-          max-height: 280px;
-          overflow-y: auto;
-          font-family: 'Segoe UI', Roboto, sans-serif;
-          background: white;
-          color: #222;
-          border-radius: 10px;
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-        ">
-          <img src="${photo}" alt="Kereta WHOOSH"
-               style="width: 100%; border-top-left-radius: 10px; border-top-right-radius: 10px;">
-
+        <style>.no-scrollbar::-webkit-scrollbar { display: none; }</style>
+        <div class="no-scrollbar" style="width: 270px; max-height: 230px; overflow-y: auto; font-family: 'Segoe UI', Roboto, sans-serif; background: white; color: #222; border-radius: 10px; scrollbar-width: none; -ms-overflow-style: none;">
+          <img src="${photo}" style="width: 100%; height: 120px; object-fit: cover; border-top-left-radius: 10px; border-top-right-radius: 10px;">
           <div style="padding: 10px 14px 6px; display: flex; align-items: center; justify-content: space-between;">
             <div style="font-size: 14px; font-weight: 600;">${trainName}</div>
-            <img src="${logo}" alt="Logo WHOOSH" style="height: 10px; opacity: 0.85;">
+            <img src="${logo}" alt="Logo" style="height: 20px; max-height: 20px; object-fit: contain;">
           </div>
-
-          <div style="font-size: 12px; color: #666; padding: 0 14px 10px;">
-            ${from} — ${to}
-          </div>
-
+          <div style="font-size: 12px; color: #666; padding: 0 14px 10px;">${dari} — ${ke}</div>
           <div style="font-size: 12px; padding: 0 14px 12px;">
             <div style="color: #888;">Stasiun berikutnya:</div>
             <div><strong>${nextStation}</strong> <span style="color: #333;">${nextTime}</span></div>
           </div>
-
           <div style="height: 1px; background: #eee; margin: 0 14px 10px;"></div>
-
           <div style="padding: 0 14px 14px;">
             <div style="font-size: 12px; color: #888; margin-bottom: 6px;">Jadwal lengkap:</div>
             ${rows}
@@ -301,56 +348,59 @@ const arah = parseInt(trainId.replace(/\D/g, '')) % 2 === 1 ? '2' : '1';
     })
     .addTo(map);
 
-  const zoom = map.getZoom();
-  if (zoom >= 13) marker.openTooltip();
+    activeMarkers[trainId] = marker;
 
-  map.on('zoomend', () => {
-    const currentZoom = map.getZoom();
-    if (currentZoom >= 11) {
-      marker.openTooltip();
-    } else {
-      marker.closeTooltip();
-    }
-  });
+    // Zoom logic
+    if (map.getZoom() >= 13) marker.openTooltip();
+    map.on('zoomend', () => {
+      const z = map.getZoom();
+      if (z >= 8) marker.openTooltip(); else marker.closeTooltip();
+      stationMarkers.forEach(m => z >= 11 ? map.addLayer(m) : map.removeLayer(m));
+      Object.values(activeMarkers).forEach(m => z >= 8 ? m.addTo(map) : m.remove());
+    });
 
-  marker.on('popupopen', () => marker.closeTooltip());
-  marker.on('popupclose', () => {
-    if (map.getZoom() >= 11) marker.openTooltip();
-  });
+    marker.on('popupopen', () => marker.closeTooltip());
+    marker.on('popupclose', () => { if (map.getZoom() >= 11) marker.openTooltip(); });
+    marker.on('click', () => {
+      autoFollowTrainId = trainId;
+      map.setView(marker.getLatLng(), 12);
+    });
+    marker.on('popupclose', () => { autoFollowTrainId = null; });
+  }
 
-  marker.on('click', () => {
-    autoFollowTrainId = trainId;
-    map.setView(marker.getLatLng(), 12);
-  });
-
-  marker.on('popupclose', () => {
-    autoFollowTrainId = null;
-  });
-
-  activeMarkers[trainId] = marker;
-
+  // Mulai animasi realtime berdasarkan segmen
   function update() {
     const now2 = new Date();
-    if (now2 >= end) {
-      marker.remove();
-      delete activeMarkers[trainId];
+    if (now2 > end) {
+      if (activeMarkers[trainId]) {
+        activeMarkers[trainId].remove();
+        delete activeMarkers[trainId];
+      }
       return;
     }
-    const t2 = (now2 - start) / (end - start);
-    const pos2 = getPositionOnRoute(latlngs, t2);
-    marker.setLatLng(pos2);
-    if (autoFollowTrainId === trainId) map.setView(pos2);
+
+    const pos2 = getTrainPosition(now2);
+    if (pos2 && activeMarkers[trainId]) {
+      activeMarkers[trainId].setLatLng(pos2);
+      if (autoFollowTrainId === trainId) map.setView(pos2);
+    }
+
     requestAnimationFrame(update);
   }
 
   requestAnimationFrame(update);
 }
 
-// ============= START SEMUA ANIMASI =============
 function startRealtimeTrains() {
   trainSchedule.forEach(schedule => {
     if (!activeMarkers[schedule.train]) {
-      animateTrainRealtime(schedule);
+      // Tentukan jalur berdasarkan jenis kereta
+      const isLRT = schedule.train.startsWith("LRT");
+      const jalur = isLRT
+        ? (schedule.arah === 1 ? jalurLRTArah1 : jalurLRTArah2)
+        : (schedule.arah === 1 ? jalurArah1 : jalurArah2);
+
+      animateTrainRealtime(schedule, jalur);
     }
   });
 }
