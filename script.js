@@ -6,17 +6,28 @@ const map = L.map('map', {
   maxBoundsViscosity: 1.0
 }).setView([-6.13, 106.82], 7);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-  subdomains: 'abcd',
+// === Ganti Carto dengan MapTiler Style Custom ===
+L.tileLayer('https://api.maptiler.com/maps/0197efaf-6c99-781c-aad5-f152fa2cf857/256/{z}/{x}/{y}.png?key=mGVjpcSejQdJkMddoEoq', {
+  tileSize: 256,
   maxZoom: 20,
-  minZoom: 5
+  minZoom: 5,
+  attribution: '&copy; <a href="https://www.maptiler.com/">MapTiler</a> & OpenStreetMap contributors'
 }).addTo(map);
 
+// === Jalur rel dari OpenRailwayMap ===
 L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', {
   subdomains: ['a', 'b', 'c'],
-  maxZoom: 20
+  maxZoom: 20,
+  opacity: 0.6
 }).addTo(map);
 
+// === Kontrol dan attribution ===
+map.attributionControl.setPrefix(false);
+map.attributionControl.setPosition('bottomleft');
+map.attributionControl.addAttribution(
+  'Data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>, <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a>'
+);
+L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
 map.attributionControl.setPrefix(false);
 map.attributionControl.setPosition('bottomleft');
 map.attributionControl.addAttribution(
