@@ -1,29 +1,25 @@
- const map = new maplibregl.Map({
-    container: 'map',
-    style: 'https://api.maptiler.com/maps/0197efaf-6c99-781c-aad5-f152fa2cf857/style.json?key=mGVjpcSejQdJkMddoEoq',
-    center: [106.82, -6.13], // Jakarta
-    zoom: 7,
-    minZoom: 5,
-    maxZoom: 20,
-    maxBounds: [[94.9, -11.2], [141.0, 6.3]]
-  });
+const map = L.map('map', {
+  preferCanvas: true,
+  maxZoom: 20,
+  minZoom: 5,
+  maxBounds: L.latLngBounds(L.latLng(-11.2, 94.9), L.latLng(6.3, 141.0)),
+  maxBoundsViscosity: 1.0
+}).setView([-6.13, 106.82], 7);
 
-  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+// === MapTiler tile ===
+L.tileLayer('https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=mGVjpcSejQdJkMddoEoq', {
+  tileSize: 512,
+  zoomOffset: -1,
+  attribution: '&copy; <a href="https://www.maptiler.com/">MapTiler</a>'
+}).addTo(map);
 
-  map.on('load', () => {
-    map.addSource('openrail', {
-      type: 'raster',
-      tiles: ['https://a.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png'],
-      tileSize: 256
-    });
+// === Jalur OpenRailwayMap ===
+L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', {
+  subdomains: ['a', 'b', 'c'],
+  maxZoom: 20,
+  opacity: 0.6
+}).addTo(map);
 
-    map.addLayer({
-      id: 'openrail-layer',
-      type: 'raster',
-      source: 'openrail',
-      paint: { 'raster-opacity': 0.6 }
-    });
-  });
 // ==================== DATA ====================
 let jalurArah1 = []; // Untuk arah A ke B
 let jalurArah2 = []; // Untuk arah B ke A
