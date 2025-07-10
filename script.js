@@ -1,25 +1,38 @@
-const map = L.map('map', {
-  preferCanvas: true,
-  maxZoom: 20,
-  minZoom: 5,
-  maxBounds: L.latLngBounds(L.latLng(-11.2, 94.9), L.latLng(6.3, 141.0)),
-  maxBoundsViscosity: 1.0
-}).setView([-6.13, 106.82], 7);
+ const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://api.maptiler.com/maps/0197efaf-6c99-781c-aad5-f152fa2cf857/style.json?key=mGVjpcSejQdJkMddoEoq',
+    center: [106.82, -6.13], // Fokus ke Jakarta
+    zoom: 7,
+    minZoom: 5,
+    maxZoom: 20,
+    maxBounds: [
+      [94.9, -11.2], // Southwest - batas kiri bawah Indonesia
+      [141.0, 6.3]   // Northeast - batas kanan atas Indonesia
+    ]
+  });
 
-// === Ganti Carto dengan MapTiler Style Custom ===
-L.tileLayer('https://api.maptiler.com/maps/0197efaf-6c99-781c-aad5-f152fa2cf857/256/{z}/{x}/{y}.png?key=mGVjpcSejQdJkMddoEoq', {
-  tileSize: 256,
-  maxZoom: 20,
-  minZoom: 5,
-  attribution: '&copy; <a href="https://www.maptiler.com/">MapTiler</a> & OpenStreetMap contributors'
-}).addTo(map);
+  map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-// === Jalur rel dari OpenRailwayMap ===
-L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', {
-  subdomains: ['a', 'b', 'c'],
-  maxZoom: 20,
-  opacity: 0.6
-}).addTo(map);
+  map.on('load', () => {
+    // Tambahkan layer jalur kereta dari OpenRailwayMap
+    map.addSource('orm-rail', {
+      'type': 'raster',
+      'tiles': [
+        'https://a.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png'
+      ],
+      'tileSize': 256
+    });
+
+    map.addLayer({
+      'id': 'orm-rail-layer',
+      'type': 'raster',
+      'source': 'orm-rail',
+      'paint': {
+        'raster-opacity': 0.6
+      }
+    });
+  });
+
 
 // === Kontrol dan attribution ===
 map.attributionControl.setPrefix(false);
