@@ -1,52 +1,29 @@
- const map = new maplibregl.Map({
-    container: 'map',
-    style: 'https://api.maptiler.com/maps/0197efaf-6c99-781c-aad5-f152fa2cf857/style.json?key=mGVjpcSejQdJkMddoEoq',
-    center: [106.82, -6.13], // Fokus ke Jakarta
-    zoom: 7,
-    minZoom: 5,
-    maxZoom: 20,
-    maxBounds: [
-      [94.9, -11.2], // Southwest - batas kiri bawah Indonesia
-      [141.0, 6.3]   // Northeast - batas kanan atas Indonesia
-    ]
-  });
+ const map = L.map('map', {
+preferCanvas: true,
+maxZoom: 20,
+minZoom: 5,
+maxBounds: L.latLngBounds(L.latLng(-11.2, 94.9), L.latLng(6.3, 141.0)),
+maxBoundsViscosity: 1.0
+}).setView([-6.13, 106.82], 7);
 
-  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+subdomains: 'abcd',
+maxZoom: 20,
+minZoom: 5
+}).addTo(map);
 
-  map.on('load', () => {
-    // Tambahkan layer jalur kereta dari OpenRailwayMap
-    map.addSource('orm-rail', {
-      'type': 'raster',
-      'tiles': [
-        'https://a.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png'
-      ],
-      'tileSize': 256
-    });
+L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', {
+subdomains: ['a', 'b', 'c'],
+maxZoom: 20
+}).addTo(map);
 
-    map.addLayer({
-      'id': 'orm-rail-layer',
-      'type': 'raster',
-      'source': 'orm-rail',
-      'paint': {
-        'raster-opacity': 0.6
-      }
-    });
-  });
-
-
-// === Kontrol dan attribution ===
 map.attributionControl.setPrefix(false);
 map.attributionControl.setPosition('bottomleft');
 map.attributionControl.addAttribution(
-  'Data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>, <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a>'
+'Data © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>, <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a>'
 );
 L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
-map.attributionControl.setPrefix(false);
-map.attributionControl.setPosition('bottomleft');
-map.attributionControl.addAttribution(
-  'Data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>, <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a>'
-);
-L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
+
 
 // ==================== DATA ====================
 let jalurArah1 = []; // Untuk arah A ke B
