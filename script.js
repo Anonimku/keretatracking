@@ -122,11 +122,10 @@ function loadStations() {
 map.on('zoomend', () => {
   const z = map.getZoom();
   stationMarkers.forEach(m => {
-    const newRadius = z >= 15 ? 5 : z >= 12 ? 4 : 2;
-    m.setRadius(newRadius);
+    if (z >= 11) map.addLayer(m);
+    else map.removeLayer(m);
   });
 });
-
 
 // =====================================================
 // ============== LOAD JADWAL KERETA ===================
