@@ -85,11 +85,11 @@ body, html {
 
 /* Tooltip Kecil Whoosh (Emas) */
 .train-tooltip.small.whoosh {
-  background-color: #DAA520 !important;
+  background-color: #da2020 !important;
 }
-.train-tooltip.small.whoosh.leaflet-tooltip-right::before { border-right-color: #DAA520 !important; }
-.train-tooltip.small.whoosh.leaflet-tooltip-left::before { border-left-color: #DAA520 !important; }
-.train-tooltip.small.whoosh.leaflet-tooltip-top::before { border-top-color: #DAA520 !important; }
+.train-tooltip.small.whoosh.leaflet-tooltip-right::before { border-right-color: #da2020 !important; }
+.train-tooltip.small.whoosh.leaflet-tooltip-left::before { border-left-color: #da2020 !important; }
+.train-tooltip.small.whoosh.leaflet-tooltip-top::before { border-top-color: #da2020 !important; }
 .train-tooltip.small.whoosh.leaflet-tooltip-bottom::before { border-bottom-color: #DAA520 !important; }
 
 /* Ukuran kecil tetap */
@@ -97,3 +97,19 @@ body, html {
   font-size: 10px !important;
   padding: 2px 4px !important;
 }
+
+.leaflet-popup-content-wrapper {
+  pointer-events: auto !important;
+}
+
+.leaflet-popup-content {
+  max-height: 230px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+.leaflet-interactive {
+  cursor: pointer;
+}
+
