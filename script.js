@@ -42,49 +42,83 @@ let activeMarkers = {};
 let autoFollowTrainId = null;
 
 // =====================================================
-// ============== LOAD GEOJSON JALUR ===================
+// ============== LOAD GEOJSON JALUR (CACHE) ===========
 // =====================================================
 
-Promise.all([
-  fetch('data/JalurKertaCepat.json')
-    .then(res => res.json())
-    .then(geo => {
-      const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
-      geometries.forEach(g => {
-        if (g.type === "MultiLineString") {
-          g.coordinates.forEach((seg, index) => {
-            const path = seg.map(c => L.latLng(c[1], c[0]));
-            if (index % 2 === 0) jalurArah1.push(path);
-            else jalurArah2.push(path);
-          });
-        }
-      });
-    }),
+const loadGeoJalur = () => {
+  const cacheKCICKey = 'jalurKCICv1';
+  const cacheLRTKey = 'jalurLRTv1';
+  const cachedKCIC = localStorage.getItem(cacheKCICKey);
+  const cachedLRT = localStorage.getItem(cacheLRTKey);
 
-  fetch('data/JalurLRT.json')
-    .then(res => res.json())
-    .then(geo => {
-      const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
-      geometries.forEach(g => {
-        if (g.type === "MultiLineString") {
-          g.coordinates.forEach((seg, index) => {
-            const path = seg.map(c => L.latLng(c[1], c[0]));
-            if (index % 2 === 0) jalurLRTArah1.push(path);
-            else jalurLRTArah2.push(path);
+  const loadKCIC = geo => {
+    const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
+    geometries.forEach(g => {
+      if (g.type === "MultiLineString") {
+        g.coordinates.forEach((seg, index) => {
+          const path = seg.map(c => L.latLng(c[1], c[0]));
+          if (index % 2 === 0) jalurArah1.push(path);
+          else jalurArah2.push(path);
+        });
+      }
+    });
+  };
 
-            L.polyline(path, {
-              color: "#800080",
-              weight: 4,
-              opacity: 0
-            }).addTo(map);
-          });
-        }
-      });
-    })
-]).then(() => {
-  jalurPerSegmen = [...jalurArah1, ...jalurArah2];
-  loadStations();
-});
+  const loadLRT = geo => {
+    const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
+    geometries.forEach(g => {
+      if (g.type === "MultiLineString") {
+        g.coordinates.forEach((seg, index) => {
+          const path = seg.map(c => L.latLng(c[1], c[0]));
+          if (index % 2 === 0) jalurLRTArah1.push(path);
+          else jalurLRTArah2.push(path);
+
+          // Bisa ditampilkan langsung jika perlu
+          L.polyline(path, {
+            color: "#800080",
+            weight: 4,
+            opacity: 0
+          }).addTo(map);
+        });
+      }
+    });
+  };
+
+  const tasks = [];
+
+  if (cachedKCIC) {
+    loadKCIC(JSON.parse(cachedKCIC));
+  } else {
+    tasks.push(
+      fetch('data/JalurKertaCepat.json')
+        .then(res => res.json())
+        .then(geo => {
+          localStorage.setItem(cacheKCICKey, JSON.stringify(geo));
+          loadKCIC(geo);
+        })
+    );
+  }
+
+  if (cachedLRT) {
+    loadLRT(JSON.parse(cachedLRT));
+  } else {
+    tasks.push(
+      fetch('data/JalurLRT.json')
+        .then(res => res.json())
+        .then(geo => {
+          localStorage.setItem(cacheLRTKey, JSON.stringify(geo));
+          loadLRT(geo);
+        })
+    );
+  }
+
+  Promise.all(tasks).then(() => {
+    jalurPerSegmen = [...jalurArah1, ...jalurArah2];
+    loadStations(); // lanjutkan setelah jalur dimuat
+  });
+};
+
+loadGeoJalur();
 
 // =====================================================
 // ============== STASIUN DARI SHEET ===================
