@@ -100,6 +100,7 @@ function loadStations() {
         if (isNaN(lat) || isNaN(lon)) return;
 
         const marker = L.circleMarker([lat, lon], {
+  renderer: L.canvas(),
           radius: 3,
           color: 'black',
           weight: 1.5,
@@ -606,19 +607,24 @@ const rows = schedule.stops.map((stop, i) => {
 // =====================================================
 // ============== START REALTIME TRAINS ================
 // =====================================================
-function startRealtimeTrains() {
-  // Tidak perlu hapus marker
-  trainSchedule.forEach(schedule => {
-    const isLRT = schedule.train.toLowerCase().startsWith("lrt");
+
+startRealtimeTrains();
+
+// Loop hanya update posisi kereta yang sedang aktif
+function updateTrainPositions() {
+  Object.entries(activeMarkers).forEach(([trainId, marker]) => {
+    const schedule = trainSchedule.find(s => s.train === trainId);
+    if (!schedule) return;
+
     const arahVal = parseInt(schedule.arah || '1');
+    const isLRT = trainId.toLowerCase().includes("lrt");
     const jalur = isLRT
       ? (arahVal === 1 ? jalurLRTArah1 : jalurLRTArah2)
       : (arahVal === 1 ? jalurArah1 : jalurArah2);
 
     animateTrainRealtime(schedule, jalur);
   });
+
+  setTimeout(updateTrainPositions, 10000); // lanjut 10 detik lagi
 }
-
-
-// Mulai update realtime tiap 10 detik
-setInterval(startRealtimeTrains, 10000);
+updateTrainPositions();
