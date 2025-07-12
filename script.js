@@ -45,59 +45,46 @@ let autoFollowTrainId = null;
 // ============== LOAD GEOJSON JALUR ===================
 // =====================================================
 
-fetch('data/JalurKertaCepat.json')
-  .then(res => res.json())
-  .then(geo => {
-    const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
+Promise.all([
+  fetch('data/JalurKertaCepat.json')
+    .then(res => res.json())
+    .then(geo => {
+      const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
+      geometries.forEach(g => {
+        if (g.type === "MultiLineString") {
+          g.coordinates.forEach((seg, index) => {
+            const path = seg.map(c => L.latLng(c[1], c[0]));
+            if (index % 2 === 0) jalurArah1.push(path);
+            else jalurArah2.push(path);
+          });
+        }
+      });
+    }),
 
-    geometries.forEach(g => {
-      if (g.type === "MultiLineString") {
-        g.coordinates.forEach((seg, index) => {
-          const path = seg.map(c => L.latLng(c[1], c[0]));
+  fetch('data/JalurLRT.json')
+    .then(res => res.json())
+    .then(geo => {
+      const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
+      geometries.forEach(g => {
+        if (g.type === "MultiLineString") {
+          g.coordinates.forEach((seg, index) => {
+            const path = seg.map(c => L.latLng(c[1], c[0]));
+            if (index % 2 === 0) jalurLRTArah1.push(path);
+            else jalurLRTArah2.push(path);
 
-          if (index % 2 === 0) {
-            jalurArah1.push(path); // arah 1 (misalnya ke Bandung)
-          } else {
-            jalurArah2.push(path); // arah 2 (misalnya ke Jakarta)
-          }
-        });
-      }
-    });
-
-    // Gabungkan untuk fungsi findRoute
-    jalurPerSegmen = [...jalurArah1, ...jalurArah2];
-
-
-    loadStations();
-  });
-
-fetch('data/JalurLRT.json')
-  .then(res => res.json())
-  .then(geo => {
-    const geometries = geo.geometries || geo.features?.map(f => f.geometry) || [];
-
-    geometries.forEach(g => {
-      if (g.type === "MultiLineString") {
-        g.coordinates.forEach((seg, index) => {
-          const path = seg.map(c => L.latLng(c[1], c[0]));
-
-          if (index % 2 === 0) {
-  jalurLRTArah1.push(path); // simpan sebagai segmen
-} else {
-  jalurLRTArah2.push(path); // simpan sebagai segmen
-}
-
-          // Untuk debugging visualisasi (boleh dihapus jika ingin tersembunyi)
-          L.polyline(path, {
-            color: "#800080", // LRT Ungu
-            weight: 4,
-            opacity: 0
-          }).addTo(map);
-        });
-      }
-    });
-  });
-
+            L.polyline(path, {
+              color: "#800080",
+              weight: 4,
+              opacity: 0
+            }).addTo(map);
+          });
+        }
+      });
+    })
+]).then(() => {
+  jalurPerSegmen = [...jalurArah1, ...jalurArah2];
+  loadStations();
+});
 
 // =====================================================
 // ============== STASIUN DARI SHEET ===================
@@ -113,11 +100,11 @@ function loadStations() {
         if (isNaN(lat) || isNaN(lon)) return;
 
         const marker = L.circleMarker([lat, lon], {
-  radius: 3, // <-- Ukuran lebih kecil
-  color: 'black',
-  weight: 1.5,
-  fillColor: 'white',
-  fillOpacity: 0.9
+          radius: 3,
+          color: 'black',
+          weight: 1.5,
+          fillColor: 'white',
+          fillOpacity: 0.9
         }).bindPopup(`<b>${s.Nama}</b><br>Kode: ${s.Kode}<br>Operator: ${s.Operator}`)
           .addTo(map);
 
@@ -127,8 +114,7 @@ function loadStations() {
 
       map.fire('zoomend');
       loadScheduleLRT();
-loadScheduleKCIC();
-
+      loadScheduleKCIC();
     });
 }
 
@@ -149,20 +135,18 @@ function loadScheduleLRT() {
   fetch("https://script.google.com/macros/s/AKfycbxFqzbqbNLEhh0EEQLKae8wxksxrJNbv0fE1JZgpUvCk_Dl7XVqYAUDDpoNzF2AVUj1/exec")
     .then(res => res.json())
     .then(data => {
-     const lrtData = data.map(item => ({
-  train: item.train,
-  stops: Array.isArray(item.stops) ? item.stops : item.stops.split(',').map(s => s.trim()),
-  times: Array.isArray(item.times) ? item.times : item.times.split(',').map(s => s.trim()),
-  hari: Array.isArray(item.hari) ? item.hari : item.hari.split(',').map(s => s.trim()),
-  arah: 1,
-  line: item.line || '' // ✅ Tambahkan baris ini
-}));
+      const lrtData = data.map(item => ({
+        train: item.train,
+        stops: Array.isArray(item.stops) ? item.stops : item.stops.split(',').map(s => s.trim()),
+        times: Array.isArray(item.times) ? item.times : item.times.split(',').map(s => s.trim()),
+        hari: Array.isArray(item.hari) ? item.hari : item.hari.split(',').map(s => s.trim()),
+        arah: 1,
+        line: item.line || '',
+        jenis: item.jenis || 'lrt'
+      }));
 
-lrtData.forEach(adjustLRTStopTimes); // ✅ Tambahkan ini
-trainSchedule.push(...lrtData);
-
-      console.log("Jadwal LRT dimuat:", trainSchedule);
-      startRealtimeTrains(); // ini harus kamu pastikan bekerja
+      lrtData.forEach(adjustLRTStopTimes);
+      trainSchedule.push(...lrtData);
     });
 }
 
@@ -175,14 +159,14 @@ function loadScheduleKCIC() {
         stops: item.stops.split(',').map(s => s.trim()),
         times: item.times.split(',').map(s => s.trim()),
         hari: item.hari.split(',').map(s => s.trim()),
-        arah: parseInt(item.arah || '1')
+        arah: parseInt(item.arah || '1'),
+        jenis: item.jenis || 'whoosh'
       }));
-      kcicData.forEach(adjustKCICStopTimes); // ✅ Tambahkan penyesuaian waktu
+      kcicData.forEach(adjustKCICStopTimes);
       trainSchedule.push(...kcicData);
       startRealtimeTrains();
     });
 }
-
 // =====================================================
 // ========= PENYESUAIAN WAKTU KCIC (KARAWANG/PADALARANG) ========
 // =====================================================
@@ -332,11 +316,8 @@ function findRouteBetweenStations(fromStation, toStation, arah = '1', isLRT = fa
   return bestPath;
 }
 
-// =====================================================
-// =================== ANIMASI KERETA ===================
-// =====================================================
 
-// Fungsi untuk menentukan ikon berdasarkan jenis kereta
+/// ==================== IKON KERETA ====================
 function getIconByType(type) {
   type = (type || '').toLowerCase();
   if (type.includes("lrt")) return "tram";
@@ -345,14 +326,15 @@ function getIconByType(type) {
   return "directions_railway";
 }
 
+// ============ ANIMASI REALTIME KERETA ================
 function animateTrainRealtime(schedule, jalur) {
   const now = new Date();
-
-  console.log('Schedule Line:', schedule.line);
-  console.log('Jalur yang diterima:', jalur);
-
   const dayName = now.toLocaleDateString('id-ID', { weekday: 'long' });
   if (!schedule.hari.includes(dayName)) return;
+
+  const trainId = schedule.train;
+  const arah = parseInt(schedule.arah || '1');
+  const isLRT = trainId.toLowerCase().includes("lrt");
 
   const times = schedule.times.map(t => {
     const [hh, mm] = t.split(':').map(Number);
@@ -361,295 +343,282 @@ function animateTrainRealtime(schedule, jalur) {
     return d;
   });
 
-  const start = times[0];
-  const end = times[times.length - 1];
-  const trainId = schedule.train;
-  const arah = parseInt(trainId.replace(/\D/g, '')) % 2 === 1 ? '2' : '1';
-  const isLRT = trainId.toLowerCase().includes("lrt");
-
-  if (now < start || now > end) {
-    if (activeMarkers[trainId]) {
-      activeMarkers[trainId].remove();
-      delete activeMarkers[trainId];
-    }
-    return;
+  // Gunakan fungsi untuk memastikan end time selalu akurat
+  function getEndTime() {
+    const [hh, mm] = schedule.times[schedule.times.length - 1].split(':').map(Number);
+    const d = new Date();
+    d.setHours(hh, mm, 0, 0);
+    return d;
   }
 
-  const getTrainPosition = (now) => {
-    let currentIndex = -1;
-    for (let i = 0; i < times.length - 1; i++) {
-      if (now >= times[i] && now <= times[i + 1]) {
-        currentIndex = i;
-        break;
-      }
+  function getStartTime() {
+    const [hh, mm] = schedule.times[0].split(':').map(Number);
+    const d = new Date();
+    d.setHours(hh, mm, 0, 0);
+    return d;
+  }
+
+const start = getStartTime();
+if (now < start || now > getEndTime()) {
+  if (activeMarkers[trainId]) {
+    activeMarkers[trainId].remove();
+    delete activeMarkers[trainId];
+  }
+  return;
+}
+
+  const getTrainPosition = (currentTime) => {
+  const lastTime = times[times.length - 1];
+  if (currentTime > lastTime) return null;
+
+
+  for (let i = 0; i < times.length - 1; i++) {
+    if (currentTime >= times[i] && currentTime <= times[i + 1]) {
+      const from = schedule.stops[i];
+      const to = schedule.stops[i + 1];
+      const tStart = times[i];
+      const tEnd = times[i + 1];
+      const segPath = findRouteBetweenStations(from, to, arah.toString(), isLRT);
+      if (!segPath || segPath.length === 0) return null;
+      const progress = (currentTime - tStart) / (tEnd - tStart);
+      return getPositionOnRoute(segPath, progress);
     }
-    if (currentIndex === -1) return null;
+  }
 
-    const from = schedule.stops[currentIndex];
-    const to = schedule.stops[currentIndex + 1];
-    const tStart = times[currentIndex];
-    const tEnd = times[currentIndex + 1];
-    const segPath = findRouteBetweenStations(from, to, arah, isLRT);
-    if (!segPath || segPath.length === 0) return null;
+  return null;
+};
 
-    const t = (now - tStart) / (tEnd - tStart);
-    const pos = getPositionOnRoute(segPath, t);
-    return pos;
-  };
+
+  const lineRaw = (schedule.line || '').trim().toLowerCase();
+  const jenis = (schedule.jenis || '').trim().toLowerCase();
+
+  let fillColor = '#FF0000';
+  const lineInfo = lineRaw.includes("bekasi") ? { name: 'LRT Bekasi Line', color: '#006400' }
+                : lineRaw.includes("cibubur") ? { name: 'LRT Cibubur Line', color: '#003366' }
+                : lineRaw.includes("jakabaring") ? { name: 'LRT Jakabaring Line', color: '#003366' }
+                : null;
+
+  if (lineInfo) fillColor = lineInfo.color;
+  else if (jenis === 'mrt') fillColor = '#8B008B';
+  else if (jenis === 'whoosh') fillColor = '#da2020ff';
+  else if (jenis === 'biasa') fillColor = '#A9A9A9';
+
+  let tooltipClass = 'train-tooltip';
+  if (isLRT) {
+    if (lineRaw.includes('bekasi')) tooltipClass += ' small bekasi';
+    else if (lineRaw.includes('cibubur')) tooltipClass += ' small cibubur';
+    else if (lineRaw.includes('jakabaring')) tooltipClass += ' small jakabaring';
+  } else if (jenis === 'mrt') tooltipClass += ' small mrt';
+  else if (jenis === 'whoosh') tooltipClass += ' small whoosh';
 
   const pos = getTrainPosition(now);
   if (!pos) return;
 
-  if (activeMarkers[trainId]) {
-    activeMarkers[trainId].setLatLng(pos);
-  } else {
-    // ================== Pewarnaan Marker ==================
-const lineRaw = (schedule.line || '').trim().toLowerCase();
-const jenis = (schedule.jenis || '').trim().toLowerCase();
-
-let fillColor = '#FF0000'; // default merah
-const lineInfo = lineRaw.includes("bekasi") ? {
-  name: 'LRT Bekasi Line',
-  color: '#006400'
-} : lineRaw.includes("cibubur") ? {
-  name: 'LRT Cibubur Line',
-  color: '#003366'
-} : lineRaw.includes("jakabaring") ? {
-  name: 'LRT Jakabaring Line',
-  color: '#003366'
-} : null;
-
-if (lineInfo) {
-  fillColor = lineInfo.color;
-} else if (jenis === 'mrt') {
-  fillColor = '#8B008B';
-} else if (jenis === 'whoosh') {
-  fillColor = '#DAA520';
-} else if (jenis === 'biasa') {
-  fillColor = '#A9A9A9';
-}
-
-// ⬇️ Tentukan class tooltip dinamis berdasarkan jenis dan line
-let tooltipClass = 'train-tooltip';
-if (isLRT) {
-  if (lineRaw.includes('bekasi')) tooltipClass += ' small bekasi';
-  else if (lineRaw.includes('cibubur')) tooltipClass += ' small cibubur';
-  else if (lineRaw.includes('jakabaring')) tooltipClass += ' small jakabaring';
-} else if (jenis === 'mrt') {
-  tooltipClass += ' small mrt';
-} else if (jenis === 'whoosh') {
-  tooltipClass += ' small whoosh';
-}
-
-const marker = L.circleMarker(pos, {
-  radius: 8,
-  color: 'white',
-  weight: 2,
-  fillColor: fillColor,
-  fillOpacity: 1
-})
-.bindTooltip(`${trainId}`, {
-  permanent: false,
-  direction: 'right',
-  offset: [10, 0],
-  className: tooltipClass
-})
-.addTo(map);
-
+  if (!activeMarkers[trainId]) {
+    const marker = L.circleMarker(pos, {
+      radius: 8,
+      color: 'white',
+      weight: 2,
+      fillColor: fillColor,
+      fillOpacity: 1
+    }).bindTooltip(`${trainId}`, {
+      permanent: false,
+      direction: 'right',
+      offset: [10, 0],
+      className: tooltipClass
+    }).bindPopup('', {
+      autoPan: false,
+      maxHeight: 240
+    }).addTo(map);
 
     activeMarkers[trainId] = marker;
 
     if (map.getZoom() >= 13) marker.openTooltip();
-    map.on('zoomend', () => {
-      const z = map.getZoom();
-      if (z >= 8) marker.openTooltip(); else marker.closeTooltip();
-      stationMarkers.forEach(m => z >= 11 ? map.addLayer(m) : map.removeLayer(m));
-      Object.values(activeMarkers).forEach(m => z >= 8 ? m.addTo(map) : m.remove());
-    });
 
     marker.on('popupopen', () => marker.closeTooltip());
-    marker.on('popupclose', () => { if (map.getZoom() >= 11) marker.openTooltip(); });
+    marker.on('popupclose', () => {
+      if (map.getZoom() >= 11) marker.openTooltip();
+      if (autoFollowTrainId === trainId) autoFollowTrainId = null;
+    });
 
     marker.on('click', () => {
       autoFollowTrainId = trainId;
       map.panTo(marker.getLatLng());
-
-      const nowClick = new Date();
-      const nextIndex = schedule.times.findIndex(time => {
-        const [hh, mm] = time.split(':').map(Number);
-        const d = new Date(nowClick);
-        d.setHours(hh, mm, 0, 0);
-        return d > nowClick;
-      });
-
-      const nextStation = schedule.stops[nextIndex] || '–';
-      const nextTime = schedule.times[nextIndex] || '–';
-      const trainName = `Kereta ${trainId}`;
-
-const lineRaw = (schedule.line || '').trim().toLowerCase();
-const lineInfo = lineRaw.includes("bekasi") ? {
-  name: 'LRT Bekasi Line',
-  color: '#006400'
-} : lineRaw.includes("cibubur") ? {
-  name: 'LRT Cibubur Line',
-  color: '#003366'
-} : lineRaw.includes("jakabaring") ? {
-  name: 'LRT Jakabaring Line',
-  color: '#003366'
-} : null; // ❌ tidak valid, jangan tampilkan apa-apa
-
-
-      const dari = schedule.stops[0];
-      const ke = schedule.stops[schedule.stops.length - 1];
-
-      const photo = isLRT
-        ? 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/LRT_Jakarta.jpg/1280px-LRT_Jakarta.jpg'
-        : 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/KCIC_400-5_with_Whoosh_logo.jpg/1920px-KCIC_400-5_with_Whoosh_logo.jpg';
-
-      const logo = isLRT
-        ? 'https://upload.wikimedia.org/wikipedia/id/0/0a/Logo_LRT_Jakarta.png'
-        : 'https://upload.wikimedia.org/wikipedia/commons/a/ab/WHOOSH_Logo.svg';
-
-      const marginMs = 15 * 1000;
-      const times = schedule.times.map(t => {
-        const [hh, mm] = t.split(':').map(Number);
-        const d = new Date(now);
-        d.setHours(hh, mm, 0, 0);
-        return d;
-      });
-
-      const rows = schedule.stops.map((stop, i) => {
-  const label = schedule.labels?.[i] || '';
-  if (label === 'Tiba') return ''; // ⛔ Skip entri "Tiba"
-
-  const displayStop = stop; // tidak perlu tampil label
-
-  const stopTime = times[i];
-  const nextTime = times[i + 1] || stopTime;
-  const isPast = now > stopTime;
-  const isNow =
-    now >= new Date(stopTime.getTime() - marginMs) &&
-    now <= new Date(nextTime.getTime() + marginMs);
-
-  const dotColor = isNow ? '#FFA500' : isPast ? '#aaa' : '#0091ff';
-  const lineColor = nextTime < now ? '#ccc' : '#0091ff';
-  const textColor = isNow ? '#000' : isPast ? '#aaa' : '#333';
-  const fontWeight = isNow ? 'bold' : 'normal';
-
-  return `
-    <div style="display: flex; align-items: flex-start; margin-bottom: 0;">
-      <div style="width: 20px; display: flex; flex-direction: column; align-items: center;">
-        <div style="width: 10px; height: 10px; background: ${dotColor}; border-radius: 50%; z-index: 2;"></div>
-        ${i < schedule.stops.length - 1 ? `<div style="width: 2px; height: 24px; background: ${lineColor}; margin-top: 0px;"></div>` : ''}
-      </div>
-      <div style="flex: 1; padding-left: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: ${textColor}; font-weight: ${fontWeight}; border-bottom: 1px solid #eee; padding: 6px 0; margin-top: -12px;">
-        <span style="margin-top: 2px;">${displayStop}</span>
-        <span style="margin-top: 2px;">${schedule.times[i] || '–'}</span>
-      </div>
-    </div>
-  `;
-}).join('');
-
-
-    const popupContent = `
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet" />
-  <style>
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .material-symbols-rounded {
-      font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
-      font-size: 16px;
-      vertical-align: middle;
-      color: #444;
-    }
-  </style>
-  <div class="no-scrollbar" style="width: 270px; max-height: 230px; overflow-y: auto; font-family: 'Segoe UI', Roboto, sans-serif; background: white; color: #222; border-radius: 10px; scrollbar-width: none; -ms-overflow-style: none;">
-    <img src="${photo}" style="width: 100%; height: 120px; object-fit: cover; border-top-left-radius: 10px; border-top-right-radius: 10px;">
-    
-    <div style="padding: 10px 14px 6px; display: flex; align-items: center; justify-content: space-between;">
-      <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600;">
-        <span class="material-symbols-rounded">${getIconByType(trainId)}</span>
-        ${lineInfo !== null ? `
-          <div style="
-            font-size: 10px;
-            color: white;
-            background: ${lineInfo.color};
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: bold;
-            display: inline-block;
-            white-space: nowrap;
-          ">
-            ${lineInfo.name.replace(/^(lrt|mrt|whoosh)\s/i, '')}
-          </div>
-        ` : ''}
-        <div>${trainName.replace(/kereta\s*/gi, '')}</div>
-      </div>
-      <img src="${logo}" alt="Logo" style="height: 20px; max-width: 60px; object-fit: contain;">
-    </div>
-
-    <div style="font-size: 11px; color: #666; padding: 0 14px 10px;">${dari} — ${ke}</div>
-
-    <div style="font-size: 11px; padding: 0 14px 12px;">
-      <div style="display: flex; flex-direction: column; gap: 4px;">
-        <div style="display: flex; align-items: center; gap: 6px; background: #f5f5f5; padding: 6px 10px; border-radius: 6px;">
-          <div style="font-weight: 600; color: #888;">Stasiun berikutnya:</div>
-          <div style="font-weight: 600; color: #333;">${nextStation}</div>
-          <div style="font-size: 10px; color: #666;">${nextTime}</div>
-        </div>
-      </div>
-    </div>
-
-    <div style="height: 1px; background: #eee; margin: 0 14px 10px;"></div>
-
-    <div style="padding: 0 14px 14px;">
-      <div style="margin-bottom: 16px;">
-        <div style="font-size: 11px; color: #888; margin-bottom: 12px;">Jadwal lengkap:</div>
-        ${rows}
-      </div>
-    </div>
-  </div>
-`;
-
-      marker.bindPopup(popupContent).openPopup();
+      const content = generatePopupContent(schedule, trainId, new Date(), isLRT, lineInfo);
+      marker.setPopupContent(content).openPopup();
     });
 
-    marker.on('popupclose', () => { autoFollowTrainId = null; });
+    map.on('zoomend', () => {
+  const z = map.getZoom();
+  
+  // ⛔ Jangan tampilkan kembali marker yang sudah dihapus dari activeMarkers
+  if (!activeMarkers[trainId]) return;
+
+  if (z >= 8) {
+    activeMarkers[trainId].openTooltip();
+    activeMarkers[trainId].addTo(map);
+  } else {
+    activeMarkers[trainId].closeTooltip();
+    activeMarkers[trainId].remove();
   }
 
-  function update() {
-    const now2 = new Date();
-    if (now2 > end) {
-      if (activeMarkers[trainId]) {
-        activeMarkers[trainId].remove();
-        delete activeMarkers[trainId];
-      }
-      return;
-    }
+  stationMarkers.forEach(m => z >= 11 ? map.addLayer(m) : map.removeLayer(m));
+});
 
-    const pos2 = getTrainPosition(now2);
-    if (pos2 && activeMarkers[trainId]) {
-      activeMarkers[trainId].setLatLng(pos2);
-      if (autoFollowTrainId === trainId) map.setView(pos2);
-    }
+  }
 
-    requestAnimationFrame(update);
+function update() {
+  const now2 = new Date();
+  const pos2 = getTrainPosition(now2);
+
+  // Hapus marker jika kereta sudah tidak punya posisi (sudah selesai)
+if (!pos2) {
+  if (activeMarkers[trainId]) {
+    // Pastikan sekarang sudah lewat dari waktu terakhir
+    const lastTime = times[times.length - 1];
+    if (now2 > lastTime) {
+      activeMarkers[trainId].remove();
+      delete activeMarkers[trainId];
+    }
+  }
+  return;
+}
+
+  if (activeMarkers[trainId]) {
+    activeMarkers[trainId].setLatLng(pos2);
+    if (autoFollowTrainId === trainId) map.setView(pos2);
+
+    if (activeMarkers[trainId].isPopupOpen()) {
+      const content = generatePopupContent(schedule, trainId, now2, isLRT, lineInfo);
+      activeMarkers[trainId].setPopupContent(content);
+    }
   }
 
   requestAnimationFrame(update);
 }
+  requestAnimationFrame(update);
+}
 
 
+// ========== FUNGSI POPUP KONTEN KERETA ===============
+function generatePopupContent(schedule, trainId, now, isLRT, lineInfo) {
+  const nextIndex = schedule.times.findIndex(time => {
+    const [hh, mm] = time.split(':').map(Number);
+    const d = new Date(now);
+    d.setHours(hh, mm, 0, 0);
+    return d > now;
+  });
+
+  const nextStation = schedule.stops[nextIndex] || '–';
+  const nextTime = schedule.times[nextIndex] || '–';
+  const dari = schedule.stops[0];
+  const ke = schedule.stops[schedule.stops.length - 1];
+  const marginMs = 15000;
+
+  const fullTimes = schedule.times.map(t => {
+    const [hh, mm] = t.split(':').map(Number);
+    const d = new Date(now);
+    d.setHours(hh, mm, 0, 0);
+    return d;
+  });
+
+const rows = schedule.stops.map((stop, i) => {
+  const label = schedule.labels?.[i] || '';
+
+  if (label === 'Tiba') return ''; // ⛔️ sembunyikan stasiun dengan label "Tiba"
+
+  const isSkipped = label === 'Langsung';
+  const stopTime = fullTimes[i];
+  const nextStopTime = fullTimes[i + 1] || stopTime;
+
+  const isPast = now > stopTime;
+  const isNow = now >= new Date(stopTime.getTime() - marginMs) &&
+                now <= new Date(nextStopTime.getTime() + marginMs);
+
+  const dotColor = isNow ? '#FFA500' : isPast ? '#aaa' : '#0091ff';
+  const lineColor = nextStopTime < now ? '#ccc' : '#0091ff';
+  const textColor = isNow ? '#000' : isPast ? '#aaa' : '#333';
+  const fontWeight = isNow ? 'bold' : 'normal';
+
+    return `
+      <div style="display: flex; align-items: flex-start; margin-bottom: 0;">
+        <div style="width: 20px; display: flex; flex-direction: column; align-items: center;">
+          <div style="width: 10px; height: 10px; background: ${dotColor}; border-radius: 50%; z-index: 2;"></div>
+          ${i < schedule.stops.length - 1 ? `<div style="width: 2px; height: 24px; background: ${lineColor}; margin-top: 0px;"></div>` : ''}
+        </div>
+        <div style="flex: 1; padding-left: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: ${textColor}; font-weight: ${fontWeight}; border-bottom: 1px solid #eee; padding: 6px 0; margin-top: -12px;">
+          <span>${stop}</span><span>${schedule.times[i] || '–'}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  const photo = isLRT
+    ? 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/LRT_Jakarta.jpg/1280px-LRT_Jakarta.jpg'
+    : 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/KCIC_400-5_with_Whoosh_logo.jpg/1920px-KCIC_400-5_with_Whoosh_logo.jpg';
+
+  const logo = isLRT
+    ? 'https://upload.wikimedia.org/wikipedia/id/0/0a/Logo_LRT_Jakarta.png'
+    : 'https://upload.wikimedia.org/wikipedia/commons/a/ab/WHOOSH_Logo.svg';
+
+  const trainName = `Kereta ${trainId}`.replace(/kereta\s*/gi, '');
+
+  return `
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet" />
+    <style>
+      .material-symbols-rounded {
+        font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+        font-size: 16px; vertical-align: middle; color: #444;
+      }
+    </style>
+
+    <div style="width: 270px; font-family: 'Segoe UI', Roboto, sans-serif; background: white; color: #222; border-radius: 10px;">
+      <img src="${photo}" style="width: 100%; height: 120px; object-fit: cover; border-top-left-radius: 10px; border-top-right-radius: 10px;">
+      <div style="padding: 10px 14px 6px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600;">
+          <span class="material-symbols-rounded">${getIconByType(trainId)}</span>
+          ${lineInfo ? `<div style="font-size: 10px; color: white; background: ${lineInfo.color}; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${lineInfo.name}</div>` : ''}
+          <div>${trainName}</div>
+        </div>
+        <img src="${logo}" alt="Logo" style="height: 20px; max-width: 60px; object-fit: contain;">
+      </div>
+      <div style="font-size: 11px; color: #666; padding: 0 14px 10px;">${dari} — ${ke}</div>
+      <div style="font-size: 11px; padding: 0 14px 12px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; align-items: center; gap: 6px; background: #f5f5f5; padding: 6px 10px; border-radius: 6px;">
+            <div style="font-weight: 600; color: #888;">Stasiun berikutnya:</div>
+            <div style="font-weight: 600; color: #333;">${nextStation}</div>
+            <div style="font-size: 10px; color: #666;">${nextTime}</div>
+          </div>
+        </div>
+      </div>
+      <div style="height: 1px; background: #eee; margin: 0 14px 10px;"></div>
+      <div style="padding: 0 14px 14px;">
+        <div style="margin-bottom: 16px;">
+          <div style="font-size: 11px; color: #888; margin-bottom: 12px;">Jadwal lengkap:</div>
+          ${rows}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+
+// =====================================================
+// ============== START REALTIME TRAINS ================
+// =====================================================
 function startRealtimeTrains() {
+  // Tidak perlu hapus marker
   trainSchedule.forEach(schedule => {
-    console.log("Train:", schedule.train, "| Line:", schedule.line); // 🔍 Tambahan log
-    
-    if (!activeMarkers[schedule.train]) {
-      const isLRT = schedule.train.startsWith("LRT");
-      const jalur = isLRT
-        ? (schedule.arah === 1 ? jalurLRTArah1 : jalurLRTArah2)
-        : (schedule.arah === 1 ? jalurArah1 : jalurArah2);
+    const isLRT = schedule.train.toLowerCase().startsWith("lrt");
+    const arahVal = parseInt(schedule.arah || '1');
+    const jalur = isLRT
+      ? (arahVal === 1 ? jalurLRTArah1 : jalurLRTArah2)
+      : (arahVal === 1 ? jalurArah1 : jalurArah2);
 
-      animateTrainRealtime(schedule, jalur);
-    }
+    animateTrainRealtime(schedule, jalur);
   });
 }
+
+
+// Mulai update realtime tiap 10 detik
+setInterval(startRealtimeTrains, 10000);
