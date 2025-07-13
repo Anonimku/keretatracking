@@ -116,30 +116,40 @@ function loadStations() {
         const lon = parseFloat((s.Lon || '').toString().replace(',', '.'));
         if (isNaN(lat) || isNaN(lon)) return;
 
+        // Marker tidak langsung ditambahkan ke peta
         const marker = L.circleMarker([lat, lon], {
           radius: 3,
           color: 'black',
           weight: 1.5,
           fillColor: 'white',
           fillOpacity: 0.9
-        }).bindPopup(`<b>${s.Nama}</b><br>Kode: ${s.Kode}<br>Operator: ${s.Operator}`)
-          .addTo(map);
+        }).bindPopup(`<b>${s.Nama}</b><br>Kode: ${s.Kode}<br>Operator: ${s.Operator}`);
 
         stationMap[s.Nama] = L.latLng(lat, lon);
         stationMarkers.push(marker);
       });
 
+      // Panggil zoomend manual agar menyesuaikan dengan zoom awal
       map.fire('zoomend');
+
       loadScheduleLRT();
       loadScheduleKCIC();
     });
 }
 
+// Tangani zoom: tambah atau hapus marker sesuai level zoom
 map.on('zoomend', () => {
   const z = map.getZoom();
   stationMarkers.forEach(m => {
     const newRadius = z >= 15 ? 5 : z >= 12 ? 4 : 2;
     m.setRadius(newRadius);
+
+    // Tampilkan hanya jika zoom cukup dekat
+    if (z >= 11) {
+      if (!map.hasLayer(m)) map.addLayer(m);
+    } else {
+      if (map.hasLayer(m)) map.removeLayer(m);
+    }
   });
 });
 
@@ -542,7 +552,7 @@ function generatePopupContent(schedule, trainId, now, isLRT, lineInfo) {
 const rows = schedule.stops.map((stop, i) => {
   const label = schedule.labels?.[i] || '';
 
-  if (label === 'Tiba') return ''; // ⛔️ sembunyikan stasiun dengan label "Tiba"
+  if (label === 'Tiba') return ''; // ⛔️ Sembunyikan entry "Tiba" saja
 
   const isSkipped = label === 'Langsung';
   const stopTime = fullTimes[i];
@@ -552,22 +562,26 @@ const rows = schedule.stops.map((stop, i) => {
   const isNow = now >= new Date(stopTime.getTime() - marginMs) &&
                 now <= new Date(nextStopTime.getTime() + marginMs);
 
-  const dotColor = isNow ? '#FFA500' : isPast ? '#aaa' : '#0091ff';
-  const lineColor = nextStopTime < now ? '#ccc' : '#0091ff';
-  const textColor = isNow ? '#000' : isPast ? '#aaa' : '#333';
+  // Warna berdasarkan kondisi, termasuk stasiun yang dilewati
+  const dotColor = isSkipped ? '#aaa' : isNow ? '#FFA500' : isPast ? '#aaa' : '#0091ff';
+  const lineColor = isSkipped ? '#ccc' : nextStopTime < now ? '#ccc' : '#0091ff';
+  const textColor = isSkipped ? '#aaa' : isNow ? '#000' : isPast ? '#aaa' : '#333';
   const fontWeight = isNow ? 'bold' : 'normal';
 
-    return `
-      <div style="display: flex; align-items: flex-start; margin-bottom: 0;">
-        <div style="width: 20px; display: flex; flex-direction: column; align-items: center;">
-          <div style="width: 10px; height: 10px; background: ${dotColor}; border-radius: 50%; z-index: 2;"></div>
-          ${i < schedule.stops.length - 1 ? `<div style="width: 2px; height: 24px; background: ${lineColor}; margin-top: 0px;"></div>` : ''}
-        </div>
-        <div style="flex: 1; padding-left: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: ${textColor}; font-weight: ${fontWeight}; border-bottom: 1px solid #eee; padding: 6px 0; margin-top: -12px;">
-          <span>${stop}</span><span>${schedule.times[i] || '–'}</span>
-        </div>
-      </div>`;
-  }).join('');
+  return `
+    <div style="display: flex; align-items: flex-start; margin-bottom: 0;">
+      <div style="width: 20px; display: flex; flex-direction: column; align-items: center;">
+        <div style="width: 10px; height: 10px; background: ${dotColor}; border-radius: 50%; z-index: 2;"></div>
+        ${i < schedule.stops.length - 1
+          ? `<div style="width: 2px; height: 24px; background: ${lineColor}; margin-top: 0px;"></div>`
+          : ''}
+      </div>
+      <div style="flex: 1; padding-left: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: ${textColor}; font-weight: ${fontWeight}; border-bottom: 1px solid #eee; padding: 6px 0; margin-top: -12px;">
+        <span>${stop}${isSkipped ? ' (Langsung)' : ''}</span><span>${schedule.times[i] || '–'}</span>
+      </div>
+    </div>`;
+}).join('');
+
 
   const photo = isLRT
     ? 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/LRT_Jakarta.jpg/1280px-LRT_Jakarta.jpg'
