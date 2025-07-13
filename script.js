@@ -474,34 +474,38 @@ if (now < start || now > getEndTime()) {
     });
 
 marker.on('click', (e) => {
-  // 🔁 Kembalikan warna marker sebelumnya jika ada
   if (selectedTrainId && selectedTrainId !== trainId && activeMarkers[selectedTrainId]) {
     const prevMarker = activeMarkers[selectedTrainId];
     prevMarker.setStyle({ fillColor: getColorBySchedule(trainSchedule.find(s => s.train === selectedTrainId)) });
   }
 
-  // 🟦 Tandai kereta ini sebagai aktif
   selectedTrainId = trainId;
-  marker.setStyle({ fillColor: '#0044ffff' }); // Warna biru saat aktif
+  autoFollowTrainId = trainId; // ✅ tambahkan baris ini
+  marker.setStyle({ fillColor: '#0044ffff' });
 
   const content = generatePopupContent(schedule, trainId, new Date(), isLRT, lineInfo);
   const sidebar = document.getElementById('trainSidebar');
-sidebar.innerHTML = content;
-sidebar.style.display = 'block';
-sidebar.classList.add('show');
+  sidebar.innerHTML = content;
+  sidebar.style.display = 'block';
+  sidebar.classList.add('show');
 
-sidebarJustOpened = true;
-setTimeout(() => { sidebarJustOpened = false; }, 200);
+  sidebarJustOpened = true;
+  setTimeout(() => { sidebarJustOpened = false; }, 200);
 
-// 🎯 Pindahkan ini ke bawah setelah sidebar.innerHTML
-setTimeout(() => {
-  const closeBtn = document.getElementById('sidebarCloseBtn');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      closeTrainSidebar();
-    });
-  }
-}, 10); // Pastikan DOM sudah render
+  // Geser ke tengah dan ke kanan sedikit
+  map.setView(marker.getLatLng(), map.getZoom(), { animate: true });
+  map.panBy([window.innerWidth * 0.15, 0]);
+
+  setTimeout(() => {
+    const closeBtn = document.getElementById('sidebarCloseBtn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        closeTrainSidebar();
+      });
+    }
+  }, 10);
+
+
 
   sidebar.innerHTML = content;
   sidebar.style.display = 'block';
@@ -517,7 +521,9 @@ if (closeBtn) {
   sidebarJustOpened = true;
   setTimeout(() => { sidebarJustOpened = false; }, 200);
 
-  map.panTo(marker.getLatLng());
+  map.setView(marker.getLatLng(), map.getZoom(), { animate: true });
+map.panBy([window.innerWidth * 0.15, 0]); // geser layar 15% lebar layar ke kanan
+
 });
 
 document.addEventListener('click', function (e) {
@@ -551,6 +557,7 @@ function closeTrainSidebar() {
         fillColor: getColorBySchedule(schedule)
       });
     }
+    autoFollowTrainId = null; // ✅ tambahkan ini
     selectedTrainId = null;
   }
 }
