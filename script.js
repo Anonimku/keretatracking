@@ -28,10 +28,10 @@ const map = L.map('map', {
   maxBoundsViscosity: 1.0
 }).setView([-6.13, 106.82], 7);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap & CARTO',
   subdomains: 'abcd',
-  maxZoom: 20,
-  minZoom: 5
+  maxZoom: 20
 }).addTo(map);
 
 L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', {
@@ -552,36 +552,31 @@ function generatePopupContent(schedule, trainId, now, isLRT, lineInfo) {
 const rows = schedule.stops.map((stop, i) => {
   const label = schedule.labels?.[i] || '';
 
-  if (label === 'Tiba') return ''; // ⛔️ Sembunyikan entry "Tiba" saja
+  if (label === 'Tiba') return ''; // ⛔️ sembunyikan stasiun dengan label "Tiba"
 
-  const isSkipped = label === 'Langsung';
   const stopTime = fullTimes[i];
   const nextStopTime = fullTimes[i + 1] || stopTime;
 
-  const isPast = now > stopTime;
-  const isNow = now >= new Date(stopTime.getTime() - marginMs) &&
-                now <= new Date(nextStopTime.getTime() + marginMs);
+  const isNow = now >= stopTime && now <= nextStopTime;
+  const isPast = now > nextStopTime || (!isNow && stopTime < now && !label); // modifikasi ini
 
-  // Warna berdasarkan kondisi, termasuk stasiun yang dilewati
-  const dotColor = isSkipped ? '#aaa' : isNow ? '#FFA500' : isPast ? '#aaa' : '#0091ff';
-  const lineColor = isSkipped ? '#ccc' : nextStopTime < now ? '#ccc' : '#0091ff';
-  const textColor = isSkipped ? '#aaa' : isNow ? '#000' : isPast ? '#aaa' : '#333';
+  const dotColor = isNow ? '#FFA500' : isPast ? '#aaa' : '#0091ff';
+  const lineColor = isPast ? '#ccc' : '#0091ff';
+  const textColor = isNow ? '#000' : isPast ? '#aaa' : '#333';
   const fontWeight = isNow ? 'bold' : 'normal';
 
-  return `
-    <div style="display: flex; align-items: flex-start; margin-bottom: 0;">
-      <div style="width: 20px; display: flex; flex-direction: column; align-items: center;">
-        <div style="width: 10px; height: 10px; background: ${dotColor}; border-radius: 50%; z-index: 2;"></div>
-        ${i < schedule.stops.length - 1
-          ? `<div style="width: 2px; height: 24px; background: ${lineColor}; margin-top: 0px;"></div>`
-          : ''}
-      </div>
-      <div style="flex: 1; padding-left: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: ${textColor}; font-weight: ${fontWeight}; border-bottom: 1px solid #eee; padding: 6px 0; margin-top: -12px;">
-        <span>${stop}${isSkipped ? ' (Langsung)' : ''}</span><span>${schedule.times[i] || '–'}</span>
-      </div>
-    </div>`;
-}).join('');
 
+    return `
+      <div style="display: flex; align-items: flex-start; margin-bottom: 0;">
+        <div style="width: 20px; display: flex; flex-direction: column; align-items: center;">
+          <div style="width: 10px; height: 10px; background: ${dotColor}; border-radius: 50%; z-index: 2;"></div>
+          ${i < schedule.stops.length - 1 ? `<div style="width: 2px; height: 24px; background: ${lineColor}; margin-top: 0px;"></div>` : ''}
+        </div>
+        <div style="flex: 1; padding-left: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: ${textColor}; font-weight: ${fontWeight}; border-bottom: 1px solid #eee; padding: 6px 0; margin-top: -12px;">
+          <span>${stop}</span><span>${schedule.times[i] || '–'}</span>
+        </div>
+      </div>`;
+  }).join('');
 
   const photo = isLRT
     ? 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/LRT_Jakarta.jpg/1280px-LRT_Jakarta.jpg'
