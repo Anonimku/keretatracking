@@ -1,6 +1,6 @@
-// ================================================
-// ========== ✅ FUNGSI CACHING GEOJSON ===========
-// ================================================
+// =====================================================
+// ============== FUNGSI CACHING GEOJSON ==============
+// =====================================================
 function cacheFetch(url, key, ttl = 3600) {
   const now = Date.now();
   const cached = localStorage.getItem(key);
@@ -18,10 +18,11 @@ function cacheFetch(url, key, ttl = 3600) {
 }
 
 // =====================================================
-// ================== INISIALISASI PETA =================
+// ================ INISIALISASI PETA =================
 // =====================================================
 const map = L.map('map', {
   preferCanvas: true,
+  zoomControl: false, // ← Tambahkan ini untuk menonaktifkan tombol zoom
   maxZoom: 20,
   minZoom: 5,
   maxBounds: L.latLngBounds(L.latLng(-11.2, 94.9), L.latLng(6.3, 141.0)),
@@ -40,11 +41,15 @@ L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 map.attributionControl.setPrefix(false);
-map.attributionControl.setPosition('bottomleft');
+map.attributionControl.setPosition('bottomright');
 map.attributionControl.addAttribution(
   'Data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>, <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a>'
 );
-L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
+L.control.scale({
+  metric: true,
+  imperial: false,
+  position: 'bottomright' // tampilkan di kanan bawah
+}).addTo(map);
 
 // =====================================================
 // ================ VARIABEL GLOBAL ====================
@@ -59,6 +64,9 @@ let stationMarkers = [];
 let trainSchedule = [];
 let activeMarkers = {};
 let autoFollowTrainId = null;
+let selectedTrainId = null;
+let sidebarJustOpened = false;
+
 
 // =====================================================
 // ============== LOAD GEOJSON JALUR ===================
@@ -453,9 +461,6 @@ if (now < start || now > getEndTime()) {
       direction: 'right',
       offset: [10, 0],
       className: tooltipClass
-    }).bindPopup('', {
-      autoPan: false,
-      maxHeight: 240
     }).addTo(map);
 
     activeMarkers[trainId] = marker;
@@ -468,12 +473,88 @@ if (now < start || now > getEndTime()) {
       if (autoFollowTrainId === trainId) autoFollowTrainId = null;
     });
 
-    marker.on('click', () => {
-      autoFollowTrainId = trainId;
-      map.panTo(marker.getLatLng());
-      const content = generatePopupContent(schedule, trainId, new Date(), isLRT, lineInfo);
-      marker.setPopupContent(content).openPopup();
+marker.on('click', (e) => {
+  // 🔁 Kembalikan warna marker sebelumnya jika ada
+  if (selectedTrainId && selectedTrainId !== trainId && activeMarkers[selectedTrainId]) {
+    const prevMarker = activeMarkers[selectedTrainId];
+    prevMarker.setStyle({ fillColor: getColorBySchedule(trainSchedule.find(s => s.train === selectedTrainId)) });
+  }
+
+  // 🟦 Tandai kereta ini sebagai aktif
+  selectedTrainId = trainId;
+  marker.setStyle({ fillColor: '#0044ffff' }); // Warna biru saat aktif
+
+  const content = generatePopupContent(schedule, trainId, new Date(), isLRT, lineInfo);
+  const sidebar = document.getElementById('trainSidebar');
+sidebar.innerHTML = content;
+sidebar.style.display = 'block';
+sidebar.classList.add('show');
+
+sidebarJustOpened = true;
+setTimeout(() => { sidebarJustOpened = false; }, 200);
+
+// 🎯 Pindahkan ini ke bawah setelah sidebar.innerHTML
+setTimeout(() => {
+  const closeBtn = document.getElementById('sidebarCloseBtn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      closeTrainSidebar();
     });
+  }
+}, 10); // Pastikan DOM sudah render
+
+  sidebar.innerHTML = content;
+  sidebar.style.display = 'block';
+  sidebar.classList.add('show');
+
+  const closeBtn = document.getElementById('sidebarCloseBtn');
+if (closeBtn) {
+  closeBtn.addEventListener('click', () => {
+    closeTrainSidebar();
+  });
+}
+
+  sidebarJustOpened = true;
+  setTimeout(() => { sidebarJustOpened = false; }, 200);
+
+  map.panTo(marker.getLatLng());
+});
+
+document.addEventListener('click', function (e) {
+  const sidebar = document.getElementById('trainSidebar');
+  if (!sidebar) return;
+  
+  if (sidebarJustOpened || !sidebar.classList.contains('show')) return;
+
+  if (!sidebar.contains(e.target)) {
+    closeTrainSidebar(); // ✅ gunakan fungsi yang sudah ada
+  }
+});
+
+// =====================================================
+// ========= FUNGSI RESET & CLOSE SIDEBAR ==============
+// =====================================================
+function closeTrainSidebar() {
+  const sidebar = document.getElementById('trainSidebar');
+  if (!sidebar) return;
+
+  sidebar.classList.remove('show');
+  setTimeout(() => {
+    sidebar.style.display = 'none';
+  }, 300);
+
+  // 🔁 Reset warna marker
+  if (selectedTrainId && activeMarkers[selectedTrainId]) {
+    const schedule = trainSchedule.find(s => s.train === selectedTrainId);
+    if (schedule) {
+      activeMarkers[selectedTrainId].setStyle({
+        fillColor: getColorBySchedule(schedule)
+      });
+    }
+    selectedTrainId = null;
+  }
+}
+
 
     map.on('zoomend', () => {
   const z = map.getZoom();
@@ -526,8 +607,26 @@ if (!pos2) {
   requestAnimationFrame(update);
 }
 
+// =====================================================
+// ===== WARNA MARKER BERDASARKAN JADWAL ===============
+// =====================================================
+function getColorBySchedule(schedule) {
+  const lineRaw = (schedule.line || '').trim().toLowerCase();
+  const jenis = (schedule.jenis || '').trim().toLowerCase();
 
-// ========== FUNGSI POPUP KONTEN KERETA ===============
+  if (lineRaw.includes("bekasi")) return '#006400';
+  if (lineRaw.includes("cibubur")) return '#003366';
+  if (lineRaw.includes("jakabaring")) return '#003366';
+  if (jenis === 'mrt') return '#8B008B';
+  if (jenis === 'whoosh') return '#da2020ff';
+  if (jenis === 'biasa') return '#A9A9A9';
+
+  return '#FF0000'; // default
+}
+
+// =====================================================
+// ========= GENERATE POPUP / SIDEBAR KERETA ===========
+// =====================================================
 function generatePopupContent(schedule, trainId, now, isLRT, lineInfo) {
   const nextIndex = schedule.times.findIndex(time => {
     const [hh, mm] = time.split(':').map(Number);
@@ -540,7 +639,6 @@ function generatePopupContent(schedule, trainId, now, isLRT, lineInfo) {
   const nextTime = schedule.times[nextIndex] || '–';
   const dari = schedule.stops[0];
   const ke = schedule.stops[schedule.stops.length - 1];
-  const marginMs = 15000;
 
   const fullTimes = schedule.times.map(t => {
     const [hh, mm] = t.split(':').map(Number);
@@ -549,34 +647,36 @@ function generatePopupContent(schedule, trainId, now, isLRT, lineInfo) {
     return d;
   });
 
-const rows = schedule.stops.map((stop, i) => {
-  const label = schedule.labels?.[i] || '';
+  const rows = schedule.stops.map((stop, i) => {
+    const label = schedule.labels?.[i] || '';
+    if (label === 'Tiba') return '';
 
-  if (label === 'Tiba') return ''; // ⛔️ sembunyikan stasiun dengan label "Tiba"
+    const stopTime = fullTimes[i];
+    const nextStopTime = fullTimes[i + 1] || stopTime;
 
-  const stopTime = fullTimes[i];
-  const nextStopTime = fullTimes[i + 1] || stopTime;
+    const isNow = now >= stopTime && now <= nextStopTime;
+    const isPast = now > nextStopTime || (!isNow && stopTime < now && !label);
 
-  const isNow = now >= stopTime && now <= nextStopTime;
-  const isPast = now > nextStopTime || (!isNow && stopTime < now && !label); // modifikasi ini
+    const dotColor = isNow ? '#FFA500' : isPast ? '#bbb' : '#1E90FF';
+    const lineColor = isPast ? '#ddd' : '#1E90FF';
+    const textColor = isNow ? '#000' : isPast ? '#999' : '#222';
+    const fontWeight = isNow ? 'bold' : 'normal';
 
-  const dotColor = isNow ? '#FFA500' : isPast ? '#aaa' : '#0091ff';
-  const lineColor = isPast ? '#ccc' : '#0091ff';
-  const textColor = isNow ? '#000' : isPast ? '#aaa' : '#333';
-  const fontWeight = isNow ? 'bold' : 'normal';
-
-
-    return `
-      <div style="display: flex; align-items: flex-start; margin-bottom: 0;">
-        <div style="width: 20px; display: flex; flex-direction: column; align-items: center;">
-          <div style="width: 10px; height: 10px; background: ${dotColor}; border-radius: 50%; z-index: 2;"></div>
-          ${i < schedule.stops.length - 1 ? `<div style="width: 2px; height: 24px; background: ${lineColor}; margin-top: 0px;"></div>` : ''}
-        </div>
-        <div style="flex: 1; padding-left: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: ${textColor}; font-weight: ${fontWeight}; border-bottom: 1px solid #eee; padding: 6px 0; margin-top: -12px;">
-          <span>${stop}</span><span>${schedule.times[i] || '–'}</span>
-        </div>
-      </div>`;
-  }).join('');
+  return `
+    <div style="display: flex; align-items: flex-start; margin-bottom: 0;">
+      <div style="width: 20px; display: flex; flex-direction: column; align-items: center;">
+        <div style="width: 10px; height: 10px; background: ${dotColor}; border-radius: 50%; z-index: 2;"></div>
+        ${i < schedule.stops.length - 1
+          ? `<div style="width: 2px; height: 24px; background: ${lineColor}; margin-top: 0px;"></div>`
+          : ''
+        }
+      </div>
+      <div style="flex: 1; padding-left: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; color: ${textColor}; font-weight: ${fontWeight}; border-bottom: 1px solid #eee; padding: 6px 0; margin-top: -12px;">
+        <span>${stop}</span>
+        <span>${schedule.times[i] || '–'}</span>
+      </div>
+    </div>`;
+}).join('');
 
   const photo = isLRT
     ? 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/LRT_Jakarta.jpg/1280px-LRT_Jakarta.jpg'
@@ -595,38 +695,64 @@ const rows = schedule.stops.map((stop, i) => {
         font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
         font-size: 16px; vertical-align: middle; color: #444;
       }
+      .sidebar-close-btn {
+        background: none;
+        border: none;
+        font-size: 22px;
+        font-weight: bold;
+        color: #666;
+        cursor: pointer;
+      }
     </style>
 
-    <div style="width: 270px; font-family: 'Segoe UI', Roboto, sans-serif; background: white; color: #222; border-radius: 10px;">
-      <img src="${photo}" style="width: 100%; height: 120px; object-fit: cover; border-top-left-radius: 10px; border-top-right-radius: 10px;">
-      <div style="padding: 10px 14px 6px; display: flex; align-items: center; justify-content: space-between;">
-        <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600;">
-          <span class="material-symbols-rounded">${getIconByType(trainId)}</span>
-          ${lineInfo ? `<div style="font-size: 10px; color: white; background: ${lineInfo.color}; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${lineInfo.name}</div>` : ''}
-          <div>${trainName}</div>
-        </div>
-        <img src="${logo}" alt="Logo" style="height: 20px; max-width: 60px; object-fit: contain;">
+    <div style="width: 100%; font-family: 'Segoe UI', Roboto, sans-serif; background: white; color: #222; border-radius: 10px; overflow: hidden;">
+      <div style="position: relative;">
+        <img src="${photo}" style="width: 100%; height: 120px; object-fit: cover;">
+<button id="sidebarCloseBtn" style="
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  cursor: pointer;
+">
+  <span class="material-symbols-rounded" style="font-size: 20px; color: #444;">close</span>
+</button>
+
+
       </div>
-      <div style="font-size: 11px; color: #666; padding: 0 14px 10px;">${dari} — ${ke}</div>
-      <div style="font-size: 11px; padding: 0 14px 12px;">
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <div style="display: flex; align-items: center; gap: 6px; background: #f5f5f5; padding: 6px 10px; border-radius: 6px;">
-            <div style="font-weight: 600; color: #888;">Stasiun berikutnya:</div>
-            <div style="font-weight: 600; color: #333;">${nextStation}</div>
-            <div style="font-size: 10px; color: #666;">${nextTime}</div>
+      <div style="padding: 12px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600;">
+            <span class="material-symbols-rounded">${getIconByType(trainId)}</span>
+            ${lineInfo ? `<div style="font-size: 10px; color: white; background: ${lineInfo.color}; padding: 2px 6px; border-radius: 4px;">${lineInfo.name}</div>` : ''}
+            <div>${trainName}</div>
           </div>
+          <img src="${logo}" style="height: 20px; max-width: 60px;">
         </div>
-      </div>
-      <div style="height: 1px; background: #eee; margin: 0 14px 10px;"></div>
-      <div style="padding: 0 14px 14px;">
-        <div style="margin-bottom: 16px;">
-          <div style="font-size: 11px; color: #888; margin-bottom: 12px;">Jadwal lengkap:</div>
+        <div style="font-size: 12px; color: #666; margin: 8px 0 14px;">${dari} — ${ke}</div>
+
+        <div style="font-size: 12px; background: #f8f8f8; padding: 8px 10px; border-radius: 6px; margin-bottom: 16px;">
+          <div style="font-weight: 500; color: #888;">Stasiun berikutnya:</div>
+          <div style="font-weight: bold; color: #333;">${nextStation} <span style="font-weight: normal; color: #666;">${nextTime}</span></div>
+        </div>
+
+        <div>
+          <div style="font-size: 11px; color: #888; margin-bottom: 8px;">Jadwal lengkap:</div>
           ${rows}
         </div>
       </div>
     </div>
   `;
 }
+
 
 
 // =====================================================
@@ -648,3 +774,4 @@ function startRealtimeTrains() {
 
 // Mulai update realtime tiap 10 detik
 setInterval(startRealtimeTrains, 10000);
+
