@@ -494,16 +494,7 @@ marker.on('click', (e) => {
 
   // Geser ke tengah dan ke kanan sedikit
   map.setView(marker.getLatLng(), map.getZoom(), { animate: true });
-
-const isMobile = window.innerWidth <= 600;
-if (isMobile) {
-  // Geser lebih tinggi (85% dari tinggi layar)
-  map.panBy([0, -window.innerHeight * 0.85]);
-} else {
   map.panBy([window.innerWidth * 0.15, 0]);
-}
-
-
 
   setTimeout(() => {
     const closeBtn = document.getElementById('sidebarCloseBtn');
